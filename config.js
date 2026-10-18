@@ -14,7 +14,7 @@ window.PLANNER = {
   // Title of the calendar event created by the "Add to calendar" buttons on upcoming dates.
   eventTitle: 'Movie night \uD83C\uDFAC',
   // Address of this site, put into the calendar reminders so they link back here. Leave empty to use the address the page is opened on.
-  siteUrl: 'https://j4kub0k.github.io/Birthday-surprise/',
+  siteUrl: 'https://j4kub0k.github.io/Movies/',
   // Title of the monthly "Plan a movie night" reminder.
   reminderTitle: 'Plan a movie night \uD83C\uDFAC',
   // "Free days" tab (Date | Jakub | Her checkboxes): its published CSV link, and its normal sheet link (opens the tab
