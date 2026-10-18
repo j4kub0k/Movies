@@ -832,7 +832,22 @@
     board.hidden = false;
   }
 
-  // ---- header banner: next movie night (both free), a suggestion from usual days, the next free date, or a nudge ----
+  // ---- header banner: next movie night (both free), a suggestion from usual days, or a nudge ----
+  // "I'm free too" on a date only one of you has ticked: opens the sheet where the other name gets ticked
+  function freeTooChip() {
+    const gridMode = !!cfg.availabilityCsvUrl;
+    const url = (gridMode ? cfg.availabilitySheetUrl : cfg.datesSheetUrl) || cfg.sheetUrl;
+    if (!url) return null;
+    const a = document.createElement('a');
+    a.className = 'chip free-too';
+    a.textContent = "\u2713 I'm free too";
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.addEventListener('click', () => say('Tick your name next to the date \u2705'));
+    return a;
+  }
+
   function renderNextShow(dated, today, hints) {
     const box = document.getElementById('next-show');
     if (!box) return;
@@ -841,7 +856,7 @@
     label.className = 'ns-label';
     box.appendChild(label);
     const both = dated.filter((e) => e.both).sort((a, b) => a.date - b.date)[0];
-    const any = dated.slice().sort((a, b) => a.date - b.date)[0];
+    const any = dated[0];
     const gridMode = !!cfg.availabilityCsvUrl;
     // ticking a date that's already there happens in the sheet; a brand-new date goes through the form
     const tickUrl = (gridMode ? cfg.availabilitySheetUrl : cfg.datesSheetUrl) || cfg.sheetUrl || '#dates';
@@ -884,19 +899,12 @@
       why.className = 'ns-only';
       why.textContent = "you're usually both free that day";
       box.append(when(suggestion), countdown(suggestion, today), why, addChip('Confirm in the sheet', tickUrl));
-    } else if (any) {
-      label.textContent = 'Next free date';
-      box.append(when(any.date), countdown(any.date, today));
-      if (any.names.length === 1) {
-        const only = document.createElement('span');
-        only.className = 'ns-only';
-        only.textContent = 'only ' + any.names[0] + ' so far';
-        box.appendChild(only);
-      }
-      box.appendChild(addChip(gridMode ? 'Tick your free days' : "\u2713 I'm free too", tickUrl));
     } else {
-      label.textContent = 'No showtime yet';
-      box.appendChild(addChip(gridMode ? 'Tick your free days' : '+ Add a free date', formUrl));
+      label.textContent = 'No movie night yet';
+      const none = document.createElement('span');
+      none.className = 'ns-only';
+      none.textContent = any ? 'no day where you are both free yet: tick "I\'m free too" on a date below' : 'no free dates yet';
+      box.append(none, addChip(gridMode ? 'Tick your free days' : '+ Add a free date', formUrl));
     }
     box.hidden = false;
   }
@@ -1088,7 +1096,14 @@
         }
         if (e.date) {
           li.classList.add('has-cal');
-          li.appendChild(e.both ? lockInButton(e.date, e.details) : calendarButtons(e.date, e.details));
+          if (e.both) {
+            li.appendChild(lockInButton(e.date, e.details));
+          } else {
+            const cal = calendarButtons(e.date, e.details);
+            const free = freeTooChip();
+            if (free) cal.appendChild(free);
+            li.appendChild(cal);
+          }
         }
         if (kind === 'movies') {
           const row = document.createElement('span');

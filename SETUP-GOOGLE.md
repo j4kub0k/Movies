@@ -59,7 +59,8 @@ Who is free on a date can come from the form, from the sheet, or both:
 - **In the form:** add a question **Who is free?** of type **Checkboxes** with the options **Jakub** and **Adela** (exactly as in the sheet). When adding a date you tick yourself, or both of you. The sheet gets a column like "Jakub, Adela".
 - **In the sheet:** checkbox columns named after each person (**Jakub**, **Adela**) in the responses tab. Tick them later, e.g. when Adela is also free on a date Jakub added. Select the columns from row 2 down and **Insert -> Checkbox** so new rows get checkboxes too.
 - The same date from both of you (in one row or in two rows) becomes one showtime marked **BOTH FREE**; those sort first, light up lime in the **Who's free** board, and the header banner shows the next movie night with **Lock it in**.
-- If only one of you is free on a date, the banner shows "only <name> so far" with an "I'm free too" button.
+- The banner at the top only shows the closest date where you are **both** free. If there is none yet it says so.
+- Every date where only one of you is free has a **✓ I'm free too** button that opens the sheet's free-dates tab, so the other person can tick their name.
 
 ## Ratings and stats
 - In the movies tab, add a column named **Rating** next to Watched and type a score from 1 to 10 (7.5 and 8/10 work too). Watched movies show it as ★ 8/10, a watched movie without a score gets a "★ Rate it" button that opens the sheet, and the header shows "N watched together · N waiting · N both-free dates · avg ★ x/10".
