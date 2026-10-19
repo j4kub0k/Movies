@@ -63,7 +63,8 @@ Who is free on a date can come from the form, from the sheet, or both:
 - Every date where only one of you is free has a **✓ I'm free too** button that opens the sheet's free-dates tab, so the other person can tick their name.
 
 ## Ratings and stats
-- In the movies tab, add a column named **Rating** next to Watched and type a score from 1 to 10 (7.5 and 8/10 work too). Watched movies show it as ★ 8/10, a watched movie without a score gets a "★ Rate it" button that opens the sheet, and the header shows "N watched together · N waiting · N both-free dates · avg ★ x/10".
+- In the movies tab, give each of you a rating column next to Watched: **Jakub's rating** and **Adela's rating** (any header containing "rating" works, and the text before it is shown as the name). Type a score from 1 to 10 (7.5 and 8/10 work too). A single shared **Rating** column still works.
+- Watched movies show each score, e.g. "Jakub ★ 8/10  Adela ★ 9/10". If someone hasn't rated yet, the movie gets a "★ Adela: rate it" button (or "★ Rate it" when nobody has) that opens the sheet. The header shows "N watched together · N waiting · N both-free dates · avg ★ x/10", the average over all scores.
 - Every movie has a **ČSFD** button that searches for it on csfd.cz.
 
 ## Notes

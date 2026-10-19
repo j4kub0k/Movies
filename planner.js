@@ -946,7 +946,12 @@
       const rows = parsed.slice(1).reverse(); // newest first
       // movies: a "Watched" column (checkboxes) moves a movie to the watched list; a "Rating" column (1-10) shows its score
       const wi = kind === 'movies' ? findCol(header, /watched|vid[eě]n|vid[eě]li/i, -1) : -1;
-      const ri = kind === 'movies' ? findCol(header, /rating|hodnocen|stars|hv[eě]zd/i, -1) : -1;
+      // rating columns: one shared "Rating", or one per person ("Jakub's rating", "Adela's rating")
+      const ratingCols = kind === 'movies'
+        ? header.map((h, i) => ({ i, h })).filter((c) => /rating|hodnocen|stars|hv[eě]zd/i.test(c.h))
+          .map((c) => ({ i: c.i, name: c.h.replace(/\s*(['\u2019`\u00B4]s)?\s*(rating|hodnocen|stars|hv[eě]zd)\w*.*$/i, '').trim() }))
+        : [];
+      const ratingIdx = new Set(ratingCols.map((c) => c.i));
       // dates from the form: a "Who" column says who is free, so dates you both picked can be matched
       // dates from the form: who is free comes from a "Who" question (a Checkboxes question gives "Jakub, Adela")
       // and/or from checkbox columns named after each person (TRUE/FALSE), which can also be ticked later in the sheet
@@ -1002,8 +1007,8 @@
             r, key, keys: [key], title,
             date: kind === 'dates' ? parseDate(title, order) : null,
             watched: wi >= 0 && isTrue(r[wi]),
-            rating: ri >= 0 ? parseRating(r[ri]) : null,
-            details: r.slice(2).filter((x, i) => i + 2 !== wi && i + 2 !== ri && !skipCols.has(i + 2)).map((x) => x.trim()).filter(Boolean).join(' · '),
+            ratings: ratingCols.map((c) => ({ name: c.name, value: parseRating(r[c.i]) })),
+            details: r.slice(2).filter((x, i) => i + 2 !== wi && !ratingIdx.has(i + 2) && !skipCols.has(i + 2)).map((x) => x.trim()).filter(Boolean).join(' · '),
           };
           if (entry.date && entry.date < today) return; // outdated dates disappear
           entries.push(entry);
@@ -1073,14 +1078,14 @@
         } else {
           li.textContent = e.title;
         }
-        if (e.rating) {
-          ratings.push(e.rating);
+        (e.ratings || []).filter((x) => x.value).forEach((x) => {
+          ratings.push(x.value);
           const st = document.createElement('span');
           st.className = 'stars';
-          st.textContent = ratingText(e.rating);
-          st.setAttribute('aria-label', e.rating + ' out of 10');
+          st.textContent = (x.name ? x.name + ' ' : '') + ratingText(x.value);
+          st.setAttribute('aria-label', (x.name ? x.name + ': ' : '') + x.value + ' out of 10');
           li.appendChild(st);
-        }
+        });
         const isNew = !e.watched && e.keys.some((k) => (seen && !seen.includes(k)) || keptNew.includes(k));
         if (isNew) {
           newKeys.push(...e.keys);
@@ -1115,15 +1120,17 @@
           c.rel = 'noopener';
           c.textContent = 'ČSFD ↗';
           row.appendChild(c);
-          if (e.watched && !e.rating && cfg.sheetUrl) {
-            // watched but no score yet: open the sheet to fill in the Rating column
+          const missing = (e.ratings || []).filter((x) => !x.value);
+          const unrated = missing.map((x) => x.name).filter(Boolean);
+          if (e.watched && (!ratingCols.length || missing.length) && cfg.sheetUrl) {
+            // watched but someone's score is missing: open the sheet to fill it in
             const rate = document.createElement('a');
             rate.className = 'chip mini rate';
             rate.href = cfg.sheetUrl;
             rate.target = '_blank';
             rate.rel = 'noopener';
-            rate.textContent = '\u2605 Rate it';
-            rate.addEventListener('click', () => say('How many out of 10? Write it in the Rating column \u2B50'));
+            rate.textContent = unrated.length && missing.length < ratingCols.length ? '\u2605 ' + unrated.join(' & ') + ': rate it' : '\u2605 Rate it';
+            rate.addEventListener('click', () => say('How many out of 10? Write it in your rating column \u2B50'));
             row.appendChild(rate);
           }
           li.appendChild(row);
