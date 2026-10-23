@@ -3,6 +3,9 @@ window.PLANNER = {
   // "Send form" -> link icon -> the form's public link
   moviesFormUrl: 'https://forms.gle/Hor4xibK7cZXWb4u6',
   datesFormUrl: 'https://forms.gle/M4Y27TwRvHTfVAcUA',
+  // The free-dates form's pre-filled link (form -> ⋮ -> Get pre-filled link, fill in any date, copy the link).
+  // Tapping an empty day in the "Who's free" calendar opens the form with that day filled in.
+  datesFormPrefillUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSc0ID01km2D0nTcplBu9i3aIAX_kJZk-cqobmcbswJY3SHweg/viewform?usp=pp_url&entry.1852985756=2026-10-25',
   // Sheet -> File -> Share -> Publish to web -> pick the tab -> "Comma-separated values (.csv)" -> Publish -> copy link
   moviesCsvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT7egcKE-RwZMf3oVBOfqCdDOk8E344-ux2uZ1tZTLkwp27OhIgkqva6Cz0kOYR5lgOTawkuee1kAcY/pub?gid=232171872&single=true&output=csv',
   datesCsvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT7egcKE-RwZMf3oVBOfqCdDOk8E344-ux2uZ1tZTLkwp27OhIgkqva6Cz0kOYR5lgOTawkuee1kAcY/pub?gid=1440545244&single=true&output=csv',

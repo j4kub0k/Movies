@@ -939,9 +939,26 @@
 
   // ---- "Who's free" board: the next five weeks, a dot per person, lime when you're both free ----
   const PERSON_COLORS = ['#c6ff00', '#5b7bff', '#ff4de1', '#ffffff'];
+  // the free-dates form with a date already filled in: the pre-filled link from config.js gets the tapped date
+  const prefillUrl = (d) => (cfg.datesFormPrefillUrl
+    ? cfg.datesFormPrefillUrl.replace(/(entry\.\d+=)\d{4}-\d{2}-\d{2}/, '$1' + d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()))
+    : cfg.datesFormUrl || '');
+  // tapping a day that has a date: scroll to it in the list and make it blink once
+  function showDay(key) {
+    const list = document.getElementById('date-list');
+    const li = list && list.querySelector('li[data-day="' + key + '"]');
+    if (!li) return;
+    if (li.hidden) expandList(list);
+    li.scrollIntoView({ block: 'center', behavior: window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    li.classList.remove('blink');
+    void li.offsetWidth;
+    li.classList.add('blink');
+  }
+
   function renderBoard(dated, people, today, hints) {
     const board = document.getElementById('free-board');
     if (!board) return;
+    const gridMode = !!cfg.availabilityCsvUrl;
     board.innerHTML = '';
     const byDay = new Map(dated.map((e) => [ymd(e.date), e]));
     const color = (name) => PERSON_COLORS[Math.max(0, people.findIndex((p) => sameName(p, name))) % PERSON_COLORS.length];
@@ -959,15 +976,30 @@
     let usedHints = false;
     for (let i = 0; i < 35; i++) {
       const d = new Date(start); d.setDate(start.getDate() + i);
-      const cell = document.createElement('span');
-      let e = byDay.get(ymd(d));
+      const own = byDay.get(ymd(d));
+      // from today on a day can be tapped: a day with a date jumps to it, an empty one opens the form for that day
+      const addUrl = !own && d >= today ? (gridMode ? cfg.availabilitySheetUrl || cfg.sheetUrl : prefillUrl(d)) : '';
+      const cell = document.createElement(own && d >= today ? 'button' : addUrl ? 'a' : 'span');
+      const dayName = d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+      if (own && d >= today) {
+        cell.type = 'button';
+        cell.addEventListener('click', () => showDay(ymd(d)));
+      } else if (addUrl) {
+        cell.href = addUrl;
+        cell.target = '_blank';
+        cell.rel = 'noopener';
+        cell.setAttribute('aria-label', dayName + ': add as a free day');
+        cell.addEventListener('click', () => say(gridMode ? 'Tick your name next to ' + dayName + ' \u2705'
+          : dayName + '? Tick who\'s free and send it \uD83D\uDC3E'));
+      }
+      let e = own;
       let usual = false;
       // a weekday you're usually free counts as "likely" unless that date has its own row
       if (!e && hints && d >= today && !hints.explicit.has(ymd(d)) && hints.patterns.has(d.getDay())) {
         const p = hints.patterns.get(d.getDay());
         if (p.names.length) { e = p; usual = true; usedHints = true; }
       }
-      cell.className = 'board-day' + (d < today ? ' past' : '') + (+d === +today ? ' today' : '') +
+      cell.className = 'board-day' + (d >= today ? ' tap' : '') + (d < today ? ' past' : '') + (+d === +today ? ' today' : '') +
         (e ? (usual ? ' usual' : ' free') : '') + (e && e.both ? (usual ? ' usual-both' : ' both') : '');
       const num = document.createElement('b');
       num.textContent = d.getDate();
@@ -1004,6 +1036,10 @@
       usualKey.textContent = 'Usually free';
       legend.appendChild(usualKey);
     }
+    const tip = document.createElement('span');
+    tip.className = 'legend-tip';
+    tip.textContent = 'tap an empty day to add it';
+    legend.appendChild(tip);
     board.append(grid, legend);
     board.hidden = false;
   }
@@ -1325,6 +1361,7 @@
         if (e.date) {
           // showtime: day number and month in the ticket stub, weekday + how soon it is in the row
           li.classList.add('showtime');
+          li.dataset.day = ymd(e.date);
           if (e.both) li.classList.add('both');
           const stub = document.createElement('span');
           stub.className = 'stub';
