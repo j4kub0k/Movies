@@ -412,6 +412,37 @@
   }
 
   const isTrue = (v) => /^(true|yes|y|x|1|\u2713|\u2714|watched)$/i.test((v || '').trim());
+  // "Locked" column on the dates tab: a movie title, or a tick / "yes" for a locked night with the movie still open.
+  // null = not locked, '' = locked without a movie, text = the movie
+  const LOCK_COL = /lock|zamk|booked|potvrz/i;
+  const lockedValue = (v) => {
+    const t = (v || '').trim();
+    if (!t || /^(false|no|n|0|-)$/i.test(t)) return null;
+    return isTrue(t) || /^(locked|ano)$/i.test(t) ? '' : t;
+  };
+  // "What time?" answers: "Afternoon, Evening" -> ['afternoon', 'evening']; empty or "All day" -> [] (any time)
+  const TIME_COL = /\btime\b|part of (the )?day|\b[čc]as\b|kdy p|afternoon|evening|odpoled|ve[čc]er/i;
+  const ANY_TIME = /^(all day|whole day|any ?time|any|whenever|cel[yý] den|kdykoliv?)$/i;
+  const timeSlots = (cell) => {
+    const parts = String(cell || '').split(/\s*(?:,|;|\/|&|\+|\band\b|\ba\b)\s*/i).map((x) => x.trim().toLowerCase()).filter(Boolean);
+    return parts.some((x) => ANY_TIME.test(x)) ? [] : parts;
+  };
+  // free: Map name -> null (any time) or Set of slots. Both free = two people share a time (any time matches all).
+  function overlap(free) {
+    const names = Array.from(free.keys());
+    if (names.length < 2) return { both: false, slots: [] };
+    const all = new Set();
+    free.forEach((v) => { if (v) v.forEach((x) => all.add(x)); });
+    if (!all.size) return { both: true, slots: [] };
+    const slots = Array.from(all).filter((x) => names.filter((n) => !free.get(n) || free.get(n).has(x)).length >= 2);
+    const anyBoth = names.filter((n) => !free.get(n)).length >= 2;
+    return { both: anyBoth || slots.length > 0, slots: anyBoth ? [] : slots };
+  }
+  function whoText(free, people, ov) {
+    const names = Array.from(free.keys()).sort((a, b) => people.indexOf(a) - people.indexOf(b));
+    if (ov.both) return names.join(' + ') + (ov.slots.length ? ' \u00B7 ' + ov.slots.join(' / ') : '');
+    return names.map((n) => (free.get(n) && free.get(n).size ? n + ' (' + Array.from(free.get(n)).join(' / ') + ')' : n)).join(' \u00B7 ');
+  }
 
   // ---- "Add to calendar": an .ics file (works in Google, Apple and Outlook calendars) with built-in alerts,
   //      plus a Google Calendar link. All-day event on the chosen date.
@@ -671,9 +702,11 @@
     const header = parsed[0] || [];
     const di = findCol(header, /date|datum|^\s*(den|day)\s*$|when|kdy/i, 0);
     const ni = findCol(header, /note|pozn|comment|koment/i, -1);
+    const li = header.findIndex((h, i) => i !== di && LOCK_COL.test(h));
     const cols = [];
+    let lastNight = null;
     header.forEach((h, i) => {
-      if (i === di || i === ni || !h.trim() || /timestamp|casov|časov/i.test(h)) return;
+      if (i === di || i === ni || i === li || !h.trim() || /timestamp|casov|časov/i.test(h)) return;
       cols.push(Object.assign({ i }, splitHeader(h)));
     });
     const people = [];
@@ -694,12 +727,14 @@
       const w = weekdayOf(cell);
       if (w >= 0) { patterns.set(w, info); return; }
       const d = parseDate(cell, order);
+      const lock = li >= 0 ? lockedValue(r[li]) : null;
+      if (d && d < today && lock !== null && (!lastNight || d > lastNight)) lastNight = d; // a past locked night
       if (!d || d < today) return;
-      const key = 'grid|' + ymd(d) + '|' + ticks.map((c) => c.i).join(',');
-      explicit.set(ymd(d), Object.assign(info, { date: d, r, title: cell, key, keys: [key] }));
+      const key = 'grid|' + ymd(d) + '|' + ticks.map((c) => c.i).join(',') + '|' + (lock || '');
+      explicit.set(ymd(d), Object.assign(info, { date: d, r, title: cell, key, keys: [key], lock }));
     });
-    const dated = Array.from(explicit.values()).filter((e) => e.names.length);
-    return { dated, people, hints: { explicit, patterns } };
+    const dated = Array.from(explicit.values()).filter((e) => e.names.length || e.lock !== null);
+    return { dated, people, hints: { explicit, patterns }, lastNight };
   }
 
   // ---- "Show all": long lists show the first few rows and a button instead of a scroll box ----
@@ -725,6 +760,38 @@
   function expandList(ul) {
     const btn = document.getElementById(ul.id + '-more');
     if (btn && btn.dataset.open !== '1') btn.click();
+  }
+
+  // ---- a night that's locked in the sheet ("Locked" column): the same for both of you ----
+  const lockTitle = (movie) => (movie ? 'Movie night: ' + movie + ' \uD83C\uDFAC' : '');
+  function lockedView(e) {
+    const wrap = document.createElement('span');
+    wrap.className = 'locked';
+    const line = document.createElement('span');
+    line.className = 'locked-line';
+    line.textContent = e.lock ? 'Locked in: ' : 'Locked in: movie night, movie to be decided';
+    if (e.lock) {
+      const b = document.createElement('b');
+      b.textContent = e.lock;
+      line.appendChild(b);
+    }
+    wrap.append(line, calendarButtons(e.date, e.details, lockTitle(e.lock)));
+    const out = notFreeChip();
+    if (out) wrap.appendChild(out);
+    return wrap;
+  }
+  // the site can't write to the sheet: this opens it, with the movie copied, so the lock can be typed in for both
+  function saveLockChip(date, movie) {
+    const day = date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'numeric' });
+    const a = sheetChip('save-lock', '\uD83D\uDD12 Save it for both of us',
+      movie ? 'Paste "' + movie + '" into the Locked column next to ' + day + ' (copied!) \uD83D\uDD12'
+        : 'Type "yes" into the Locked column next to ' + day + ' \uD83D\uDD12');
+    if (a && movie) {
+      a.addEventListener('click', () => {
+        try { navigator.clipboard.writeText(movie).catch(() => {}); } catch (err) { /* no clipboard: the movie is in the bubble */ }
+      }, true);
+    }
+    return a;
   }
 
   // ---- "Lock it in": on a both-free date, pick a movie and make the calendar event for it ----
@@ -761,7 +828,7 @@
       again.textContent = movie ? '\uD83C\uDFB2 Another' : '\uD83C\uDFB2 Pick a movie';
       again.hidden = movie ? movieTitles.length < 2 : !movieTitles.length;
       again.addEventListener('click', () => lock(true));
-      result.append(line, calendarButtons(date, details, movie ? 'Movie night: ' + movie + ' \uD83C\uDFAC' : ''), again);
+      result.append(line, calendarButtons(date, details, lockTitle(movie)), again);
       if (movie) {
         const skip = document.createElement('button');
         skip.type = 'button';
@@ -770,6 +837,8 @@
         skip.addEventListener('click', () => lock(false));
         result.appendChild(skip);
       }
+      const save = saveLockChip(date, movie);
+      if (save) result.appendChild(save);
       result.hidden = false;
       btn.hidden = true;
       plain.hidden = true;
@@ -871,13 +940,14 @@
   // plans changed: opens the sheet to untick your name (or delete the row if nobody's free any more)
   const notFreeChip = () => sheetChip('not-free', "\u2715 Can't make it", 'Untick your name next to that date. Maybe next time \uD83D\uDC3E');
 
-  function renderNextShow(dated, today, hints) {
+  function renderNextShow(dated, today, hints, lastNight) {
     const box = document.getElementById('next-show');
     if (!box) return;
     box.innerHTML = '';
     const label = document.createElement('span');
     label.className = 'ns-label';
     box.appendChild(label);
+    const locked = dated.filter((e) => e.lock !== null).sort((a, b) => a.date - b.date)[0];
     const both = dated.filter((e) => e.both).sort((a, b) => a.date - b.date)[0];
     const any = dated[0];
     const gridMode = !!cfg.availabilityCsvUrl;
@@ -908,7 +978,17 @@
         if (p && p.both && !hints.explicit.has(ymd(d))) suggestion = d;
       }
     }
-    if (both) {
+    let spoke = false;
+    if (locked) {
+      label.textContent = 'Movie night locked';
+      const tag = document.createElement('span');
+      tag.className = 'both-tag locked-tag';
+      tag.textContent = '\uD83D\uDD12 LOCKED';
+      box.append(when(locked.date), countdown(locked.date, today), tag, lockedView(locked));
+      const days = Math.round((locked.date - today) / 86400000);
+      const what = locked.lock ? locked.lock + ' ' : 'Movie night ';
+      if (days <= 1) { spoke = true; setTimeout(() => say(what + (days === 0 ? 'is TONIGHT! \uD83C\uDF7F' : 'is tomorrow! \uD83C\uDF7F')), 1500); }
+    } else if (both) {
       label.textContent = 'Next movie night';
       const tag = document.createElement('span');
       tag.className = 'both-tag';
@@ -917,7 +997,7 @@
       const out = notFreeChip();
       if (out) box.appendChild(out);
       const days = Math.round((both.date - today) / 86400000);
-      if (days <= 1) setTimeout(() => say(days === 0 ? 'Movie night is TONIGHT! \uD83C\uDF7F' : 'Movie night is tomorrow! \uD83C\uDF7F'), 1500);
+      if (days <= 1) { spoke = true; setTimeout(() => say(days === 0 ? 'Movie night is TONIGHT! \uD83C\uDF7F' : 'Movie night is tomorrow! \uD83C\uDF7F'), 1500); }
     } else if (suggestion) {
       label.textContent = 'Suggested';
       const why = document.createElement('span');
@@ -930,6 +1010,15 @@
       none.className = 'ns-only';
       none.textContent = any ? 'no day where you are both free yet: tick "I\'m free too" on a date below' : 'no free dates yet';
       box.append(none, addChip(gridMode ? 'Tick your free days' : '+ Add a free date', formUrl));
+    }
+    // nothing locked for a while: say how long it's been (from past rows in the Locked column)
+    const since = lastNight ? Math.round((today - lastNight) / 86400000) : 0;
+    if (!locked && since >= 14) {
+      const gap = document.createElement('span');
+      gap.className = 'ns-since';
+      gap.textContent = since + ' days since your last movie night';
+      box.appendChild(gap);
+      if (since >= 21 && !spoke) setTimeout(() => say("It's been " + since + ' days since our last movie night! I miss it \uD83E\uDD7A'), 1800);
     }
     box.hidden = false;
   }
@@ -945,6 +1034,10 @@
       parts.push(movies.waiting + ' waiting');
     }
     if (dates) parts.push(dates.both + ' both-free date' + (dates.both === 1 ? '' : 's'));
+    if (dates && dates.lastNight) {
+      const ago = Math.round((dates.today - dates.lastNight) / 86400000);
+      parts.push('last movie night ' + (ago === 0 ? 'today' : ago === 1 ? 'yesterday' : ago + ' days ago'));
+    }
     if (movies && movies.ratings.length) {
       const avg = movies.ratings.reduce((a, b) => a + b, 0) / movies.ratings.length;
       parts.push('avg \u2605 ' + avg.toFixed(1) + '/10');
@@ -991,16 +1084,20 @@
         }
         return any;
       };
-      const personCols = formDates ? header.map((h, i) => i).filter((i) => i >= 2 && header[i].trim() && boolCol(i)) : [];
+      // optional "Locked" column (a movie title or "yes" = that night is set, for both of you) and "What time?" answers
+      const lockI = formDates ? header.findIndex((h, i) => i >= 2 && LOCK_COL.test(h)) : -1;
+      const timeI = formDates ? header.findIndex((h, i) => i >= 2 && i !== lockI && TIME_COL.test(h)) : -1;
+      const personCols = formDates ? header.map((h, i) => i).filter((i) => i >= 2 && i !== lockI && i !== timeI && header[i].trim() && boolCol(i)) : [];
       let whoI = formDates ? findCol(header, /who|kto|kdo|name|meno|jm[eé]no/i, -1) : -1;
-      if (personCols.includes(whoI)) whoI = -1;
-      if (formDates && whoI < 0 && header.length > 2 && !personCols.includes(2) && !/note|pozn/i.test(header[2])) whoI = 2;
+      if (personCols.includes(whoI) || whoI === lockI || whoI === timeI) whoI = -1;
+      if (formDates && whoI < 0 && header.length > 2 && !personCols.includes(2) && lockI !== 2 && timeI !== 2 && !/note|pozn/i.test(header[2])) whoI = 2;
       const splitNames = (cell) => String(cell || '').split(/\s*(?:,|;|\/|&|\+|\band\b|\ba\b)\s*/i).map((s) => s.trim()).filter(Boolean);
       const namesIn = (r) => [
         ...(whoI >= 0 ? splitNames(r[whoI]) : []),
         ...personCols.filter((i) => isTrue(r[i])).map((i) => header[i].trim()),
       ];
-      const skipCols = new Set([whoI, ...personCols]);
+      const skipCols = new Set([whoI, lockI, timeI, ...personCols]);
+      let lastNight = null; // the most recent locked night that's already over
       if (watchedBlock) watchedBlock.hidden = wi < 0;
 
       const seen = readSeen(listId);
@@ -1018,8 +1115,9 @@
         dated = g.dated;
         people = g.people;
         hints = g.hints;
+        lastNight = g.lastNight;
         dated.forEach((e) => currentKeys[listId].push(e.key));
-        dated.sort((a, b) => (b.both - a.both) || (a.date - b.date));
+        dated.sort((a, b) => ((b.lock !== null) - (a.lock !== null)) || (b.both - a.both) || (a.date - b.date));
         entries = dated.slice();
       } else {
         const order = kind === 'dates' ? detectOrder(rows.map((r) => r[1] || '')) : 'dmy';
@@ -1034,8 +1132,13 @@
             watched: wi >= 0 && isTrue(r[wi]),
             ratings: ratingCols.map((c) => ({ name: c.name, value: parseRating(r[c.i]) })),
             details: r.slice(2).filter((x, i) => i + 2 !== wi && !ratingIdx.has(i + 2) && !skipCols.has(i + 2)).map((x) => x.trim()).filter(Boolean).join(' · '),
+            lock: lockI >= 0 ? lockedValue(r[lockI]) : null,
+            slots: timeI >= 0 ? timeSlots(r[timeI]) : [],
           };
-          if (entry.date && entry.date < today) return; // outdated dates disappear
+          if (entry.date && entry.date < today) { // outdated dates disappear; a locked one counts as the last movie night
+            if (entry.lock !== null && (!lastNight || entry.date > lastNight)) lastNight = entry.date;
+            return;
+          }
           entries.push(entry);
         });
         if (kind === 'dates') {
@@ -1058,18 +1161,27 @@
             }
             const k = ymd(e.date);
             let g = groups.get(k);
-            if (!g) { g = { r: e.r, title: e.title, date: e.date, keys: [], names: [], notes: [] }; groups.set(k, g); }
+            if (!g) { g = { r: e.r, title: e.title, date: e.date, keys: [], names: [], notes: [], free: new Map(), lock: null }; groups.set(k, g); }
             g.keys.push(e.key);
-            names.forEach((n) => { if (!g.names.includes(n)) g.names.push(n); });
+            names.forEach((n) => {
+              if (!g.names.includes(n)) g.names.push(n);
+              // a row without a time means any time; times from several rows add up
+              if (!e.slots.length) g.free.set(n, null);
+              else if (!g.free.has(n) || g.free.get(n)) g.free.set(n, new Set([...(g.free.get(n) || []), ...e.slots]));
+            });
+            if (e.lock !== null && !g.lock) g.lock = e.lock; // a movie title wins over a plain "yes"
             e.r.slice(2).forEach((x, i) => { const v = x.trim(); if (!skipCols.has(i + 2) && v && !g.notes.includes(v)) g.notes.push(v); });
           });
           groups.forEach((g) => g.names.sort((a, b) => people.indexOf(a) - people.indexOf(b)));
-          dated = Array.from(groups.values()).map((g) => Object.assign(g, {
-            key: g.keys[0],
-            both: g.names.length >= 2,
-            details: [g.names.join(' + '), ...g.notes].filter(Boolean).join(' · '),
-          }));
-          dated.sort((a, b) => (b.both - a.both) || (a.date - b.date));
+          dated = Array.from(groups.values()).map((g) => {
+            const ov = overlap(g.free);
+            return Object.assign(g, {
+              key: g.keys[0],
+              both: ov.both,
+              details: [whoText(g.free, people, ov), ...g.notes].filter(Boolean).join(' · '),
+            });
+          });
+          dated.sort((a, b) => ((b.lock !== null) - (a.lock !== null)) || (b.both - a.both) || (a.date - b.date));
           entries = [...dated, ...textOnly];
         }
       }
@@ -1094,7 +1206,12 @@
           li.appendChild(document.createTextNode(e.date.toLocaleDateString(undefined, { weekday: 'long' }) +
             (e.date.getFullYear() !== today.getFullYear() ? ' ' + e.date.getFullYear() : '')));
           li.appendChild(countdown(e.date, today));
-          if (e.both) {
+          if (e.lock !== null && e.lock !== undefined) {
+            const tag = document.createElement('span');
+            tag.className = 'both-tag locked-tag';
+            tag.textContent = '\uD83D\uDD12 LOCKED';
+            li.appendChild(tag);
+          } else if (e.both) {
             const tag = document.createElement('span');
             tag.className = 'both-tag';
             tag.textContent = 'BOTH FREE';
@@ -1126,7 +1243,10 @@
         }
         if (e.date) {
           li.classList.add('has-cal');
-          if (e.both) {
+          if (e.lock !== null && e.lock !== undefined) {
+            li.classList.add('both', 'is-locked');
+            li.appendChild(lockedView(e));
+          } else if (e.both) {
             li.appendChild(lockInButton(e.date, e.details));
             const out = notFreeChip();
             if (out) li.appendChild(out);
@@ -1176,9 +1296,9 @@
       collapseList(list, kind === 'dates' ? 5 : 6);
       if (watchedList) collapseList(watchedList, 4);
       if (kind === 'dates') {
-        renderNextShow(dated, today, hints);
+        renderNextShow(dated, today, hints, lastNight);
         renderBoard(dated, people, today, hints);
-        return { kind, both: dated.filter((e) => e.both).length };
+        return { kind, both: dated.filter((e) => e.both).length, lastNight, today };
       }
       movieTitles = entries.filter((e) => !e.watched).map((e) => e.title);
       return {

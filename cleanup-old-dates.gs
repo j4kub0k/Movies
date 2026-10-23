@@ -4,6 +4,8 @@
  *
  * It only touches rows whose date column is a real date before today. Anything it can't read (weekday rows like
  * "Friday", empty cells, notes) is kept, and so is the header row. The movies tab is never touched.
+ * Rows with something in a "Locked" column are kept too: they are your past movie nights, and the site uses the
+ * latest one for "N days since your last movie night".
  */
 const DATES_TAB_GID = 1440545244; // the number after gid= in the free-dates tab's address
 const DATE_COLUMN = 2;            // column B ("When are you free?"); the form's timestamp is column A
@@ -16,11 +18,16 @@ function cleanOldDates() {
   if (last < 2) return;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const values = sheet.getRange(2, DATE_COLUMN, last - 1, 1).getValues();
+  const width = sheet.getLastColumn();
+  const header = sheet.getRange(1, 1, 1, width).getValues()[0];
+  const lockCol = header.findIndex((h) => /lock|zamk|booked|potvrz/i.test(String(h))); // -1 = no Locked column
+  const values = sheet.getRange(2, 1, last - 1, width).getValues();
   let deleted = 0;
   for (let i = values.length - 1; i >= 0; i--) { // bottom to top, so row numbers stay valid while deleting
-    const d = toDate(values[i][0]);
-    if (d && d < today) { sheet.deleteRow(i + 2); deleted++; }
+    const d = toDate(values[i][DATE_COLUMN - 1]);
+    const lock = lockCol >= 0 ? String(values[i][lockCol]).trim() : '';
+    const locked = lock !== '' && !/^(false|no|n|0|-)$/i.test(lock);
+    if (d && d < today && !locked) { sheet.deleteRow(i + 2); deleted++; }
   }
   console.log('Deleted ' + deleted + ' past date row(s).');
 }

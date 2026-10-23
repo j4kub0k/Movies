@@ -63,6 +63,16 @@ Who is free on a date can come from the form, from the sheet, or both:
 - Every date where only one of you is free has a **✓ I'm free too** button that opens the sheet's free-dates tab, so the other person can tick their name.
 - Every date (and the banner) also has a **✕ Can't make it** button for when plans change: it opens the same tab so you can untick your name, or delete the row if neither of you is free any more. The site only reads the sheet, so the change happens there and shows up on the page about a minute later.
 
+## Locking a movie night for both of you
+- In the free-dates tab, add a column with the header **Locked** (any header containing "lock" works).
+- When you settle on a night, type the **movie title** into that column on any row of that date, or **yes** if the movie is still open. Both of you then see "🔒 Locked in: Heat" on the page and in the banner, with calendar buttons for exactly that movie night.
+- On the page, **Lock it in** picks a movie on your phone, then **🔒 Save it for both of us** copies the movie title and opens this tab so you can paste it in.
+- Locked rows from the past are your movie-night history: the site shows "last movie night N days ago", and after 2 weeks without a locked night the banner says how long it has been (Tara starts complaining after 3 weeks). The cleanup script keeps these rows.
+
+## Evening or afternoon (optional)
+- In the free-dates form, add a question **What time?** of type **Checkboxes** with the options **Afternoon** and **Evening** (you can add **All day** too). Leave it optional.
+- A date only counts as **BOTH FREE** when your times overlap: Jakub "Afternoon" and Adela "Evening" on the same day is not a match. No answer or "All day" matches anything. The page shows e.g. "Jakub + Adela · evening", or "Jakub (afternoon) · Adela (evening)" when they don't overlap.
+
 ## Ratings and stats
 - In the movies tab, give each of you a rating column next to Watched: **Jakub's rating** and **Adela's rating** (any header containing "rating" works, and the text before it is shown as the name). Type a score from 1 to 10 (7.5 and 8/10 work too). A single shared **Rating** column still works.
 - Watched movies show each score, e.g. "Jakub ★ 8/10  Adela ★ 9/10". If someone hasn't rated yet, the movie gets a "★ Adela: rate it" button (or "★ Rate it" when nobody has) that opens the sheet. The header shows "N watched together · N waiting · N both-free dates · avg ★ x/10", the average over all scores.
