@@ -339,11 +339,20 @@
   try { me = localStorage.getItem(ME_KEY) || ''; } catch (e) { /* storage blocked: nobody picked */ }
   const isMe = (name) => !!me && !!name && name.trim().toLowerCase() === me.trim().toLowerCase();
 
-  function setMessage(list, text) {
+  // a message in place of a list; with retry, a "Try again" button that loads everything again
+  function setMessage(list, text, retry) {
     list.innerHTML = '';
     const li = document.createElement('li');
     li.className = 'muted';
     li.textContent = text;
+    if (retry) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip mini retry';
+      b.textContent = '\u21BB Try again';
+      b.addEventListener('click', () => { b.disabled = true; b.textContent = 'Loading\u2026'; loadAll(true); });
+      li.appendChild(b);
+    }
     list.appendChild(li);
   }
 
@@ -858,7 +867,7 @@
     // or lock just the date and decide on the movie later
     const plain = document.createElement('button');
     plain.type = 'button';
-    plain.className = 'chip lock-plain';
+    plain.className = 'chip lock-plain secondary';
     plain.textContent = '\uD83D\uDCC5 Just the date';
     const result = document.createElement('span');
     result.className = 'locked';
@@ -878,7 +887,7 @@
       }
       const again = document.createElement('button');
       again.type = 'button';
-      again.className = 'chip mini';
+      again.className = 'chip mini secondary';
       again.textContent = movie ? '\uD83C\uDFB2 Another' : '\uD83C\uDFB2 Pick a movie';
       again.hidden = movie ? movieTitles.length < 2 : !movieTitles.length;
       again.addEventListener('click', () => lock(true));
@@ -886,7 +895,7 @@
       if (movie) {
         const skip = document.createElement('button');
         skip.type = 'button';
-        skip.className = 'chip mini';
+        skip.className = 'chip mini secondary';
         skip.textContent = 'No movie yet';
         skip.addEventListener('click', () => lock(false));
         result.appendChild(skip);
@@ -1016,7 +1025,7 @@
   }
   const freeTooChip = (link) => sheetChip('free-too', "\u2713 I'm free too", 'Tick your name next to the date \u2705', link);
   // plans changed: opens the sheet to untick your name (or delete the row if nobody's free any more)
-  const notFreeChip = (link) => sheetChip('not-free', "\u2715 Can't make it", 'Untick your name next to that date. Maybe next time \uD83D\uDC3E', link);
+  const notFreeChip = (link) => sheetChip('not-free secondary', "\u2715 Can't make it", 'Untick your name next to that date. Maybe next time \uD83D\uDC3E', link);
 
   function renderNextShow(dated, today, hints, lastNight) {
     const box = document.getElementById('next-show');
@@ -1096,6 +1105,20 @@
       box.appendChild(gap);
       if (since >= 21 && !spoke && firstLoad) setTimeout(() => say("It's been " + since + ' days since our last movie night! I miss it \uD83E\uDD7A'), 1800);
     }
+    // on phones the extra buttons ("Just the date", "Can't make it", ...) wait behind "more", so the banner stays tidy
+    if (box.querySelector('.secondary')) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'ns-more link-btn';
+      more.textContent = '\u22EF more';
+      more.setAttribute('aria-expanded', 'false');
+      more.addEventListener('click', () => {
+        const open = box.classList.toggle('more-open');
+        more.textContent = open ? 'less' : '\u22EF more';
+        more.setAttribute('aria-expanded', String(open));
+      });
+      box.appendChild(more);
+    }
     box.hidden = false;
   }
 
@@ -1148,7 +1171,7 @@
     if (!csvUrl) { setMessage(list, 'Not connected yet.'); return null; }
     try {
       const got = await getCsv(csvUrl, fresh);
-      if (got.status) { setMessage(list, 'Could not load the list (Google answered ' + got.status + '). Is the tab published as CSV?'); return null; }
+      if (got.status) { setMessage(list, 'Could not load the list (Google answered ' + got.status + '). Is the tab published as CSV?', true); return null; }
       const text = got.text;
       if (/^\s*</.test(text)) { setMessage(list, 'That link is a web page, not CSV. Re-publish the tab as "Comma-separated values (.csv)".'); return null; }
       const parsed = parseCsv(text);
@@ -1411,7 +1434,7 @@
       };
     } catch (e) {
       console.error('Planner: failed to load', csvUrl, e);
-      setMessage(list, 'Could not reach Google (network or blocked). Try reloading.');
+      setMessage(list, 'Could not reach Google (no connection, or it is blocked).', true);
       return null;
     }
   }
@@ -1655,14 +1678,30 @@
   pop.append(msg, avatar);
   document.body.appendChild(pop);
   let hideTimer = null;
+  // what was tapped last: if it's down where the bubble appears, the bubble goes to the top of the screen instead
+  let lastTap = null, lastTapAt = 0;
+  document.addEventListener('pointerdown', (e) => { lastTap = e.target; lastTapAt = Date.now(); }, true);
+  function placePop() {
+    pop.classList.remove('top');
+    const t = Date.now() - lastTapAt < 3000 && lastTap && lastTap.closest ? lastTap.closest('a, button, summary, li') || lastTap : null;
+    if (!t || pop.contains(t) || !document.contains(t)) return;
+    const r = t.getBoundingClientRect();
+    // the bubble's resting place (its size without the pop-in animation), bottom right
+    const top = window.innerHeight - 44 - pop.offsetHeight - 16, left = window.innerWidth - 16 - pop.offsetWidth;
+    if (r.bottom > top && r.top < window.innerHeight && r.right > left) pop.classList.add('top'); // anywhere below its top edge
+  }
   window.taraSay = (text) => {
     msg.textContent = text;
     pop.classList.remove('show');
+    placePop();
     void pop.offsetWidth; // replay the pop-in for a new message
     pop.classList.add('show');
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => pop.classList.remove('show'), 4000);
   };
+  // tapping the bubble closes it
+  msg.title = 'Tap to close';
+  msg.addEventListener('click', () => { clearTimeout(hideTimer); pop.classList.remove('show'); });
   avatar.addEventListener('click', () => window.taraSay('Woof! \uD83D\uDC3E'));
 
   // A link that opens a new tab right after Tara spoke waits a moment, so the message can be read first.
