@@ -1,6 +1,11 @@
 # Images
 
-Drop the dog photos here as `dog1.jpg`, `dog2.jpg`, `dog3.jpg` ... up to `dog12.jpg`. Keep the numbers in order, without gaps.
+Drop the dog photos here as `dog1.jpg`, `dog2.jpg`, `dog3.jpg` ... as many as you like (`dog9.jpg`, `dog10.jpg`, ... `dog40.jpg`).
+Keep the numbers going up; a few missing numbers are fine, but after 8 missing in a row the page stops looking.
+The name must be exactly `dogN.jpg` (lower case, `.jpg`, not `.jpeg`/`.JPG`/`.png`).
+
+Uploading from a phone: on GitHub open the `images` folder -> **Add file -> Upload files**, rename the photo to the next number
+before uploading (or upload, then open it -> pencil -> rename), and **Commit changes**. It shows up on the site after about a minute.
 The page finds them by itself, so adding a photo needs no code change (just commit and push the file).
 
 Tip: resize to ~1000px wide so the page loads fast on mobile.

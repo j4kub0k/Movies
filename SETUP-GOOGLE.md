@@ -61,6 +61,7 @@ Who is free on a date can come from the form, from the sheet, or both:
 - The same date from both of you (in one row or in two rows) becomes one showtime marked **BOTH FREE**; those sort first, light up lime in the **Who's free** board, and the header banner shows the next movie night with **Lock it in**.
 - The banner at the top only shows the closest date where you are **both** free. If there is none yet it says so.
 - Every date where only one of you is free has a **✓ I'm free too** button that opens the sheet's free-dates tab, so the other person can tick their name.
+- Every date (and the banner) also has a **✕ Can't make it** button for when plans change: it opens the same tab so you can untick your name, or delete the row if neither of you is free any more. The site only reads the sheet, so the change happens there and shows up on the page about a minute later.
 
 ## Ratings and stats
 - In the movies tab, give each of you a rating column next to Watched: **Jakub's rating** and **Adela's rating** (any header containing "rating" works, and the text before it is shown as the name). Type a score from 1 to 10 (7.5 and 8/10 work too). A single shared **Rating** column still works.
