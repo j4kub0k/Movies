@@ -614,7 +614,7 @@
       const items = Array.from(list.querySelectorAll('li:not(.muted)'));
       if (items.length < 2) { say(items.length ? 'Add one more movie and I\'ll pick for you \uD83C\uDFB2' : 'Add some movies first and I\'ll pick one \uD83C\uDFB2'); return; }
       items.forEach((li) => { li.classList.remove('picked', 'flash'); const t = li.querySelector('.pick-tag'); if (t) t.remove(); });
-      const winner = Math.floor(Math.random() * items.length);
+      const winner = pickOlder(items.length);
       const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       // at least ~16 flashes, ending exactly on the winner; the whole spin always takes about 2.5 s
       const n = items.length;
@@ -633,7 +633,7 @@
         tag.textContent = "TONIGHT'S PICK";
         li.insertBefore(tag, li.querySelector('small'));
         li.scrollIntoView({ block: 'center', behavior: still ? 'auto' : 'smooth' });
-        say('Ooh, ' + li.firstChild.textContent.trim() + '! Good pick \uD83C\uDF7F');
+        say('Ooh, ' + li.firstChild.textContent.trim() + (winner === items.length - 1 ? "! It's waited the longest \uD83C\uDF7F" : '! Good pick \uD83C\uDF7F'));
         btn.disabled = false;
       };
       const tick = () => {
@@ -665,6 +665,45 @@
   const csfdUrl = (title) => 'https://www.csfd.cz/hledat/?q=' + encodeURIComponent(title);
   const sameName = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
   let movieTitles = []; // movies still to watch, used by "Lock it in"
+  // movies waiting longer are more likely to be picked: lists are newest first, so the last one weighs the most
+  // (with 5 movies the oldest is 5x as likely as the newest)
+  function pickOlder(n) {
+    let r = Math.random() * n * (n + 1) / 2;
+    for (let i = 0; i < n; i++) { r -= i + 1; if (r < 0) return i; }
+    return n - 1;
+  }
+
+  // ---- taste match: how close your two ratings are on movies you both rated ----
+  function renderTaste(entries) {
+    const box = document.getElementById('taste');
+    if (!box) return;
+    const rated = entries.filter((e) => e.watched).map((e) => ({ title: e.title, r: (e.ratings || []).filter((x) => x.name && x.value) }))
+      .filter((m) => m.r.length >= 2);
+    box.hidden = !rated.length;
+    if (!rated.length) return;
+    const diff = (m) => Math.abs(m.r[0].value - m.r[1].value);
+    const avg = (m) => (m.r[0].value + m.r[1].value) / 2;
+    const match = Math.max(0, Math.round(100 - rated.reduce((a, m) => a + diff(m), 0) / rated.length * 10));
+    const mood = match >= 90 ? 'same brain' : match >= 75 ? 'great match' : match >= 50 ? 'agree to disagree' : 'opposites attract';
+    const loved = rated.slice().sort((a, b) => avg(b) - avg(a))[0];
+    const split = rated.slice().sort((a, b) => diff(b) - diff(a))[0];
+    const num = (v) => Math.round(v * 10) / 10;
+    box.innerHTML = '';
+    const line = (label, value, extra) => {
+      const row = document.createElement('span');
+      row.className = 'taste-row';
+      const l = document.createElement('i');
+      l.textContent = label;
+      const b = document.createElement('b');
+      b.textContent = value;
+      row.append(l, b);
+      if (extra) row.appendChild(document.createTextNode(' ' + extra));
+      box.appendChild(row);
+    };
+    line('Taste match', match + '%', '\u00B7 ' + mood);
+    line('Most loved together', loved.title, '\u2605 ' + num(avg(loved)) + '/10');
+    if (diff(split) >= 2) line('Biggest split', split.title, split.r.map((x) => x.name + ' ' + num(x.value)).join(' vs '));
+  }
 
   // ---- "Free days" tab: Date | Jakub | Her (checkboxes). Optional "Jakub (evening)" columns, a "Note" column,
   //      and rows with a weekday instead of a date ("Friday") for days you're usually free ----
@@ -811,7 +850,7 @@
     result.className = 'locked';
     result.hidden = true;
     const lock = (withMovie) => {
-      const movie = withMovie && movieTitles.length ? movieTitles[Math.floor(Math.random() * movieTitles.length)] : '';
+      const movie = withMovie && movieTitles.length ? movieTitles[pickOlder(movieTitles.length)] : '';
       result.innerHTML = '';
       const line = document.createElement('span');
       line.className = 'locked-line';
@@ -1301,6 +1340,7 @@
         return { kind, both: dated.filter((e) => e.both).length, lastNight, today };
       }
       movieTitles = entries.filter((e) => !e.watched).map((e) => e.title);
+      renderTaste(entries);
       return {
         kind,
         watchedCol: wi >= 0,
