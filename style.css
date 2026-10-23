@@ -887,3 +887,8 @@ body::after {
 .tara.sniffing .head { animation: sniff 0.5s steps(1, end) infinite; }
 @keyframes sniff { 0% { transform: translateY(0); } 50% { transform: translateY(1px); } }
 .tara.left .tara-bubble { left: auto; right: 56px; }
+
+/* "Can't make it": opens the sheet to untick your name; quieter than the other buttons */
+.chip.not-free { color: #ff8fb4; border-color: #ff8fb4; border-style: dashed; }
+.chip.not-free:hover { background: #ff8fb4; color: #000; }
+.showtimes li > .chip.not-free, .next-show > .chip.not-free { margin-top: 8px; }

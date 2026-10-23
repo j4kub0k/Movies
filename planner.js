@@ -67,13 +67,13 @@
   h1.appendChild(svg);
 })();
 
-// Dog Appreciation Corner ("TARA", a DOGEMA film): the photos images/dog1.jpg, dog2.jpg, ... (up to dog12.jpg, found
+// Dog Appreciation Corner ("TARA", a DOGEMA film): the photos images/dog1.jpg, dog2.jpg, ... (no upper limit, found
 // automatically) as frames on movie film strips. Each row of the board is a strip of film; the photos can be dragged
 // out of it and placed anywhere. The layout is redone at random every time the corner is opened.
 (function dogGallery() {
   const gallery = document.getElementById('dog-gallery');
   const details = gallery.closest('details');
-  const MAX = 12, COLS = 2;
+  const BATCH = 8, LIMIT = 500, COLS = 2;
   const WIDTH = 36;                   // photo width, % of the board width (a photo is 4:5)
   const EDGE = 20;                    // px of film edge (sprocket holes + edge print) above and below a photo
   const FRAMES = ['2A', '3', '3A', '4', '4A', '5', '5A'];
@@ -115,15 +115,33 @@
     return svg;
   }
 
-  // Which photos exist? Try dog1.jpg ... dog12.jpg once and keep the ones that load.
-  // Done the first time the corner is opened, so a visit that never opens it downloads no photos.
+  // Which photos exist? dog1.jpg, dog2.jpg, ... with no upper limit: check them 8 at a time and stop after
+  // a batch where none exist (so a few missing numbers are fine). Online only the headers are fetched;
+  // the photos themselves download when shown. Done the first time the corner is opened.
+  const exists = (n) => {
+    const src = 'images/dog' + n + '.jpg';
+    if (location.protocol === 'file:') {
+      return new Promise((resolve) => {
+        const probe = new Image();
+        probe.onload = () => resolve(true);
+        probe.onerror = () => resolve(false);
+        probe.src = src;
+      });
+    }
+    return fetch(src, { method: 'HEAD' }).then((r) => r.ok, () => false);
+  };
   let ready = null;
-  const findPhotos = () => ready || (ready = Promise.all(Array.from({ length: MAX }, (_, i) => new Promise((resolve) => {
-    const probe = new Image();
-    probe.onload = () => resolve(i + 1);
-    probe.onerror = () => resolve(0);
-    probe.src = 'images/dog' + (i + 1) + '.jpg';
-  }))).then((found) => found.filter(Boolean)));
+  const findPhotos = () => ready || (ready = (async () => {
+    const found = [];
+    for (let start = 1; start <= LIMIT; start += BATCH) {
+      const nums = Array.from({ length: BATCH }, (_, i) => start + i);
+      const ok = await Promise.all(nums.map(exists));
+      const hits = nums.filter((n, i) => ok[i]);
+      if (!hits.length) break;
+      found.push(...hits);
+    }
+    return found;
+  })());
 
   // Lay everything out again at random; runs when the corner is opened.
   function layout(available) {
@@ -175,6 +193,8 @@
       shot.style.setProperty('--rot', rand(-1.8, 1.8).toFixed(1) + 'deg');
 
       const img = el('img');
+      img.loading = 'lazy';
+      img.decoding = 'async';
       img.src = 'images/dog' + n + '.jpg';
       img.alt = 'Tara, photo ' + n;
       img.draggable = false;
@@ -834,19 +854,22 @@
 
   // ---- header banner: next movie night (both free), a suggestion from usual days, or a nudge ----
   // "I'm free too" on a date only one of you has ticked: opens the sheet where the other name gets ticked
-  function freeTooChip() {
+  function sheetChip(cls, text, line) {
     const gridMode = !!cfg.availabilityCsvUrl;
     const url = (gridMode ? cfg.availabilitySheetUrl : cfg.datesSheetUrl) || cfg.sheetUrl;
     if (!url) return null;
     const a = document.createElement('a');
-    a.className = 'chip free-too';
-    a.textContent = "\u2713 I'm free too";
+    a.className = 'chip ' + cls;
+    a.textContent = text;
     a.href = url;
     a.target = '_blank';
     a.rel = 'noopener';
-    a.addEventListener('click', () => say('Tick your name next to the date \u2705'));
+    a.addEventListener('click', () => say(line));
     return a;
   }
+  const freeTooChip = () => sheetChip('free-too', "\u2713 I'm free too", 'Tick your name next to the date \u2705');
+  // plans changed: opens the sheet to untick your name (or delete the row if nobody's free any more)
+  const notFreeChip = () => sheetChip('not-free', "\u2715 Can't make it", 'Untick your name next to that date. Maybe next time \uD83D\uDC3E');
 
   function renderNextShow(dated, today, hints) {
     const box = document.getElementById('next-show');
@@ -891,6 +914,8 @@
       tag.className = 'both-tag';
       tag.textContent = 'BOTH FREE';
       box.append(when(both.date), countdown(both.date, today), tag, lockInButton(both.date, both.details));
+      const out = notFreeChip();
+      if (out) box.appendChild(out);
       const days = Math.round((both.date - today) / 86400000);
       if (days <= 1) setTimeout(() => say(days === 0 ? 'Movie night is TONIGHT! \uD83C\uDF7F' : 'Movie night is tomorrow! \uD83C\uDF7F'), 1500);
     } else if (suggestion) {
@@ -1103,10 +1128,14 @@
           li.classList.add('has-cal');
           if (e.both) {
             li.appendChild(lockInButton(e.date, e.details));
+            const out = notFreeChip();
+            if (out) li.appendChild(out);
           } else {
             const cal = calendarButtons(e.date, e.details);
             const free = freeTooChip();
             if (free) cal.appendChild(free);
+            const out = notFreeChip();
+            if (out) cal.appendChild(out);
             li.appendChild(cal);
           }
         }
