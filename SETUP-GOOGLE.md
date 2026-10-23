@@ -73,6 +73,11 @@ Who is free on a date can come from the form, from the sheet, or both:
 - In the free-dates form, add a question **What time?** of type **Checkboxes** with the options **Afternoon** and **Evening** (you can add **All day** too). Leave it optional.
 - A date only counts as **BOTH FREE** when your times overlap: Jakub "Afternoon" and Adela "Evening" on the same day is not a match. No answer or "All day" matches anything. The page shows e.g. "Jakub + Adela · evening", or "Jakub (afternoon) · Adela (evening)" when they don't overlap.
 
+## Who's looking, jumping to the right cell, refreshing
+- The first time, the page asks **Who's this?** (your names come from the sheet). It's remembered on that phone; "not you?" switches. Then each date shows only the button that fits: **I'm free too** on dates you're not on yet, **Can't make it** on yours, and **Rate it** only when *your* score is missing.
+- Those buttons open the sheet **at the exact cell**: your checkbox on that date's row, your rating cell, or the Locked cell. (This relies on the sheet rows staying in the order they're published; sorting the tab in a filter view is fine, sorting the actual rows just changes which row a button lands on.)
+- Under the stats it says when the data was loaded, with **↻ Refresh**. Coming back to the page from the sheet reloads it by itself. Google takes a few minutes to publish sheet changes, so a tick may need a moment and another refresh.
+
 ## Ratings and stats
 - In the movies tab, give each of you a rating column next to Watched: **Jakub's rating** and **Adela's rating** (any header containing "rating" works, and the text before it is shown as the name). Type a score from 1 to 10 (7.5 and 8/10 work too). A single shared **Rating** column still works.
 - Watched movies show each score, e.g. "Jakub ★ 8/10  Adela ★ 9/10". If someone hasn't rated yet, the movie gets a "★ Adela: rate it" button (or "★ Rate it" when nobody has) that opens the sheet. The header shows "N watched together · N waiting · N both-free dates · avg ★ x/10", the average over all scores.

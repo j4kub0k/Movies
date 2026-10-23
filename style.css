@@ -906,3 +906,12 @@ body::after {
 .taste[hidden] { display: none; }
 .taste-row i { font-style: normal; color: var(--lime); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.62rem; margin-right: 6px; }
 .taste-row b { font-family: var(--display); font-size: 0.9rem; color: #fff; }
+
+/* status bar: "Who's this?" + "updated N min ago · Refresh" */
+.status-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin-top: 8px; font: 400 0.68rem/1.4 var(--mono); letter-spacing: 0.06em; color: rgba(255, 255, 255, 0.8); }
+.status-bar[hidden] { display: none; }
+.status-bar .me { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.status-bar .chip.mini { min-height: 30px; }
+.link-btn { background: none; border: 0; padding: 4px 2px; min-height: 30px; color: var(--lime); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.link-btn:disabled { opacity: 0.5; cursor: wait; }
+.link-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
