@@ -8,7 +8,7 @@ Uploading from a phone: on GitHub open the `images` folder -> **Add file -> Uplo
 before uploading (or upload, then open it -> pencil -> rename), and **Commit changes**. It shows up on the site after about a minute.
 The page finds them by itself, so adding a photo needs no code change (just commit and push the file).
 
-Tip: resize to ~1000px wide so the page loads fast on mobile.
+Tip: resize to about 640px wide (the gallery never shows them bigger) so the page loads fast on mobile.
 
 Tip: photos straight from a phone carry hidden camera, date and sometimes GPS data. Resizing or exporting them
 (for example with an image editor's "export for web") removes it, which matters because the page can be public.

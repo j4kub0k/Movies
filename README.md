@@ -4,3 +4,4 @@
 - **The birthday experience** is a separate Unity WebGL build uploaded to itch.io, so it is not in this repo.
 - `TODO.md`: the setup steps left on your side (Google sheet, sharing, ratings).
 - `Project Roadmap.docx`: the original plan (partly out of date).
+- `manifest.webmanifest` + `images/avatar/icon-*.png`: lets the page be added to a phone's home screen as an app ("Add to home screen" button under the monthly reminder).

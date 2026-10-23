@@ -1372,6 +1372,27 @@
   } else {
     setButton('add-date', cfg.datesFormUrl);
   }
+  // "Add to home screen": the browser's own install prompt where there is one (Android Chrome), otherwise Tara explains.
+  // Opened from the home screen the page runs full screen like an app, so the button hides there.
+  const homeBtn = document.getElementById('add-home');
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
+  window.addEventListener('appinstalled', () => { if (homeBtn) homeBtn.hidden = true; });
+  if (homeBtn) {
+    if ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone) homeBtn.hidden = true;
+    homeBtn.addEventListener('click', () => {
+      if (installPrompt) {
+        installPrompt.prompt();
+        installPrompt.userChoice.then((r) => say(r.outcome === 'accepted' ? "I'm on your home screen now! \uD83D\uDC3E" : 'Maybe later then \uD83D\uDC3E'));
+        installPrompt = null;
+        return;
+      }
+      const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      say(ios ? 'Tap Share \u2B06\uFE0F at the bottom, then "Add to Home Screen" \uD83D\uDCF2'
+        : 'Open the browser menu \u22EE and tap "Add to Home screen" \uD83D\uDCF2');
+    });
+  }
+
   Promise.all([
     fillList('movie-list', cfg.moviesCsvUrl, 'No movies yet. Add the first one!', 'movies'),
     fillList('date-list', cfg.availabilityCsvUrl || cfg.datesCsvUrl, 'No dates yet. Add one!', 'dates'),
