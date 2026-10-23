@@ -76,6 +76,8 @@ Who is free on a date can come from the form, from the sheet, or both:
 ## Ratings and stats
 - In the movies tab, give each of you a rating column next to Watched: **Jakub's rating** and **Adela's rating** (any header containing "rating" works, and the text before it is shown as the name). Type a score from 1 to 10 (7.5 and 8/10 work too). A single shared **Rating** column still works.
 - Watched movies show each score, e.g. "Jakub ★ 8/10  Adela ★ 9/10". If someone hasn't rated yet, the movie gets a "★ Adela: rate it" button (or "★ Rate it" when nobody has) that opens the sheet. The header shows "N watched together · N waiting · N both-free dates · avg ★ x/10", the average over all scores.
+- With two rating columns, a **taste match** box sits above the watched list: how close your scores are (100% = always the same score), your most loved movie together, and the biggest split (only when you're 2+ points apart).
+- **Pick for me** and **Lock it in** prefer movies that have waited longest: the oldest movie on the list is several times more likely than the newest.
 - Every movie has a **ČSFD** button that searches for it on csfd.cz.
 
 ## Notes
