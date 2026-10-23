@@ -892,3 +892,12 @@ body::after {
 .chip.not-free { color: #ff8fb4; border-color: #ff8fb4; border-style: dashed; }
 .chip.not-free:hover { background: #ff8fb4; color: #000; }
 .showtimes li > .chip.not-free, .next-show > .chip.not-free { margin-top: 8px; }
+
+/* a night locked in the sheet ("Locked" column): same for both of you */
+.both-tag.locked-tag { background: var(--lime); color: #000; }
+.showtimes li.is-locked { outline-width: 3px; box-shadow: inset 0 0 0 1px var(--blue); }
+.showtimes li.is-locked .locked { margin-top: 8px; }
+.next-show > .locked { width: 100%; }
+.chip.save-lock { background: var(--blue); color: #fff; border-color: var(--blue); box-shadow: 3px 3px 0 var(--lime); }
+.chip.save-lock:hover { background: #fff; color: var(--blue); }
+.ns-since { width: 100%; font: 700 0.66rem/1.3 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: #ff8fb4; }
