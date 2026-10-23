@@ -937,3 +937,14 @@ body::after {
 @media (prefers-reduced-motion: reduce) { .planner-list li.skeleton { animation: none; } }
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .chip.retry { margin-left: 10px; font-style: normal; }
+
+/* "Who's free" days you can tap: empty ones open the form for that day, ones with a date jump to it */
+a.board-day, button.board-day { color: inherit; text-decoration: none; cursor: pointer; padding: 0; font: 700 0.72rem/1 var(--mono); }
+button.board-day:not(.both) { background: #121212; }
+.board-day.tap:hover, .board-day.tap:focus-visible { border-color: var(--lime); outline: none; box-shadow: 0 0 0 2px var(--lime) inset; }
+a.board-day.tap::after { content: "+"; position: absolute; top: 2px; right: 4px; font-size: 0.6rem; color: var(--lime); opacity: 0; }
+a.board-day.tap:hover::after, a.board-day.tap:focus-visible::after { opacity: 1; }
+.showtimes li.blink { animation: row-blink 0.9s ease-out 2; }
+@keyframes row-blink { 50% { box-shadow: 0 0 0 3px var(--lime); } }
+@media (prefers-reduced-motion: reduce) { .showtimes li.blink { animation: none; outline: 3px solid var(--lime); } }
+.legend-tip { margin-left: auto; font-weight: 400; text-transform: none; letter-spacing: 0.04em; opacity: 0.7; }

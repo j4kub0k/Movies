@@ -73,6 +73,10 @@ Who is free on a date can come from the form, from the sheet, or both:
 - In the free-dates form, add a question **What time?** of type **Checkboxes** with the options **Afternoon** and **Evening** (you can add **All day** too). Leave it optional.
 - A date only counts as **BOTH FREE** when your times overlap: Jakub "Afternoon" and Adela "Evening" on the same day is not a match. No answer or "All day" matches anything. The page shows e.g. "Jakub + Adela · evening", or "Jakub (afternoon) · Adela (evening)" when they don't overlap.
 
+## Tapping the "Who's free" calendar
+- Tap an **empty day** (today or later) and the free-dates form opens with that date already filled in. This uses `datesFormPrefillUrl` in `config.js`: in the form, ⋮ -> **Get pre-filled link**, fill in any date, copy the link and paste it there (the sample date in it is swapped for the tapped day). Without it the plain form opens.
+- Tap a **day that already has a date** and the page scrolls to it in the list (opening "Show all" if needed) and makes it blink.
+
 ## Who's looking, jumping to the right cell, refreshing
 - The first time, the page asks **Who's this?** (your names come from the sheet). It's remembered on that phone; "not you?" switches. Then each date shows only the button that fits: **I'm free too** on dates you're not on yet, **Can't make it** on yours, and **Rate it** only when *your* score is missing.
 - Those buttons open the sheet **at the exact cell**: your checkbox on that date's row, your rating cell, or the Locked cell. (This relies on the sheet rows staying in the order they're published; sorting the tab in a filter view is fine, sorting the actual rows just changes which row a button lands on.)
