@@ -303,9 +303,10 @@
   const say = (text) => { if (window.taraSay) window.taraSay(text); }; // Tara's speech bubble (see the end of this file)
 
   // Small CSV parser that handles quoted fields, commas and newlines inside quotes.
+  // Each row keeps its row number in the sheet (row.line, header = 1), so buttons can open the sheet right there.
   function parseCsv(text) {
     const rows = [];
-    let row = [], field = '', quoted = false;
+    let row = [], field = '', quoted = false, line = 0;
     for (let i = 0; i < text.length; i++) {
       const ch = text[i];
       if (quoted) {
@@ -317,14 +318,26 @@
       else if (ch === '\n' || ch === '\r') {
         if (ch === '\r' && text[i + 1] === '\n') i++;
         row.push(field); field = '';
-        if (row.some((f) => f.trim() !== '')) rows.push(row);
+        line++;
+        if (row.some((f) => f.trim() !== '')) { row.line = line; rows.push(row); }
         row = [];
       } else field += ch;
     }
     row.push(field);
-    if (row.some((f) => f.trim() !== '')) rows.push(row);
+    line++;
+    if (row.some((f) => f.trim() !== '')) { row.line = line; rows.push(row); }
     return rows;
   }
+
+  // a link to one cell of the sheet: "...edit#gid=123" + "&range=C5"
+  const colLetter = (i) => { let out = ''; for (let n = i + 1; n > 0; n = Math.floor((n - 1) / 26)) out = String.fromCharCode(65 + (n - 1) % 26) + out; return out; };
+  const cellUrl = (base, col, line) => (base && line ? base + (base.includes('#') ? '&' : '#') + 'range=' + colLetter(Math.max(0, col)) + line : base);
+
+  // ---- who is looking: picked once per phone ("Who's this?"), so buttons that don't apply to you can hide ----
+  const ME_KEY = 'planner-me';
+  let me = '';
+  try { me = localStorage.getItem(ME_KEY) || ''; } catch (e) { /* storage blocked: nobody picked */ }
+  const isMe = (name) => !!me && !!name && name.trim().toLowerCase() === me.trim().toLowerCase();
 
   function setMessage(list, text) {
     list.innerHTML = '';
@@ -729,7 +742,7 @@
       }).join(' · ');
     return { names, both, shared, details: [who, note].filter(Boolean).join(' · ') };
   }
-  function parseGrid(parsed, today) {
+  function parseGrid(parsed, today, base) {
     const header = parsed[0] || [];
     const di = findCol(header, /date|datum|^\s*(den|day)\s*$|when|kdy/i, 0);
     const ni = findCol(header, /note|pozn|comment|koment/i, -1);
@@ -762,7 +775,13 @@
       if (d && d < today && lock !== null && (!lastNight || d > lastNight)) lastNight = d; // a past locked night
       if (!d || d < today) return;
       const key = 'grid|' + ymd(d) + '|' + ticks.map((c) => c.i).join(',') + '|' + (lock || '');
-      explicit.set(ymd(d), Object.assign(info, { date: d, r, title: cell, key, keys: [key], lock }));
+      const mine = cols.filter((c) => isMe(c.name));
+      const links = base ? {
+        free: cellUrl(base, (mine[0] || { i: di }).i, r.line),
+        out: cellUrl(base, (mine.find((c) => isTrue(r[c.i])) || mine[0] || { i: di }).i, r.line),
+        lock: cellUrl(base, li >= 0 ? li : di, r.line),
+      } : {};
+      explicit.set(ymd(d), Object.assign(info, { date: d, r, title: cell, key, keys: [key], lock, links }));
     });
     const dated = Array.from(explicit.values()).filter((e) => e.names.length || e.lock !== null);
     return { dated, people, hints: { explicit, patterns }, lastNight };
@@ -771,6 +790,7 @@
   // ---- "Show all": long lists show the first few rows and a button instead of a scroll box ----
   function collapseList(ul, n) {
     const old = document.getElementById(ul.id + '-more');
+    const wasOpen = !!old && old.dataset.open === '1'; // a refresh keeps "Show all" open
     if (old) old.remove();
     const items = Array.from(ul.children).filter((li) => !li.classList.contains('muted'));
     items.forEach((li) => { li.hidden = false; });
@@ -779,6 +799,7 @@
     btn.type = 'button';
     btn.className = 'chip more-toggle';
     btn.id = ul.id + '-more';
+    if (wasOpen) btn.dataset.open = '1';
     const apply = () => {
       const open = btn.dataset.open === '1';
       items.forEach((li, i) => { li.hidden = !open && i >= n; });
@@ -810,11 +831,11 @@
     return wrap;
   }
   // the site can't write to the sheet: this opens it, with the movie copied, so the lock can be typed in for both
-  function saveLockChip(date, movie) {
+  function saveLockChip(date, movie, link) {
     const day = date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'numeric' });
     const a = sheetChip('save-lock', '\uD83D\uDD12 Save it for both of us',
       movie ? 'Paste "' + movie + '" into the Locked column next to ' + day + ' (copied!) \uD83D\uDD12'
-        : 'Type "yes" into the Locked column next to ' + day + ' \uD83D\uDD12');
+        : 'Type "yes" into the Locked column next to ' + day + ' \uD83D\uDD12', link);
     if (a && movie) {
       a.addEventListener('click', () => {
         try { navigator.clipboard.writeText(movie).catch(() => {}); } catch (err) { /* no clipboard: the movie is in the bubble */ }
@@ -824,7 +845,10 @@
   }
 
   // ---- "Lock it in": on a both-free date, pick a movie and make the calendar event for it ----
-  function lockInButton(date, details) {
+  // A night locked here is remembered until the page is closed, so a refresh before the sheet has it doesn't undo it.
+  const localLocks = new Map(); // ymd -> movie ('' = no movie yet)
+  function lockInButton(e) {
+    const date = e.date, details = e.details;
     const wrap = document.createElement('span');
     wrap.className = 'lock-wrap';
     const btn = document.createElement('button');
@@ -839,8 +863,9 @@
     const result = document.createElement('span');
     result.className = 'locked';
     result.hidden = true;
-    const lock = (withMovie) => {
-      const movie = withMovie && movieTitles.length ? movieTitles[pickOlder(movieTitles.length)] : '';
+    const lock = (withMovie, chosen) => {
+      const movie = chosen !== undefined ? chosen : withMovie && movieTitles.length ? movieTitles[pickOlder(movieTitles.length)] : '';
+      localLocks.set(ymd(date), movie);
       result.innerHTML = '';
       const line = document.createElement('span');
       line.className = 'locked-line';
@@ -866,32 +891,40 @@
         skip.addEventListener('click', () => lock(false));
         result.appendChild(skip);
       }
-      const save = saveLockChip(date, movie);
+      const save = saveLockChip(date, movie, e.links && e.links.lock);
       if (save) result.appendChild(save);
       result.hidden = false;
       btn.hidden = true;
       plain.hidden = true;
-      say(movie ? movie + " it is! Don't forget snacks \uD83C\uDF7F" : 'Movie night locked in! Pick the movie whenever \uD83C\uDFAC');
+      if (chosen === undefined) say(movie ? movie + " it is! Don't forget snacks \uD83C\uDF7F" : 'Movie night locked in! Pick the movie whenever \uD83C\uDFAC');
     };
     btn.addEventListener('click', () => lock(true));
     plain.addEventListener('click', () => lock(false));
     wrap.append(btn, plain, result);
+    if (localLocks.has(ymd(date))) lock(true, localLocks.get(ymd(date)));
     return wrap;
   }
 
   // the buttons under a date: the locked night, the lock buttons (both free), or calendar + "I'm free too".
   // "Can't make it" always goes at the end of that same row.
+  // Knowing who's looking: "I'm free too" only on dates you're not on yet, "Can't make it" only on yours.
   function showtimeActions(e) {
+    const links = e.links || {};
+    const mine = !me || (e.names || []).some(isMe);
     let row;
     if (e.lock != null) row = lockedView(e);
-    else if (e.both) row = lockInButton(e.date, e.details);
+    else if (e.both) row = lockInButton(e);
     else {
       row = calendarButtons(e.date, e.details);
-      const free = freeTooChip();
-      if (free) row.appendChild(free);
+      if (!me || !mine) {
+        const free = freeTooChip(links.free);
+        if (free) row.appendChild(free);
+      }
     }
-    const out = notFreeChip();
-    if (out) row.appendChild(out);
+    if (mine) {
+      const out = notFreeChip(links.out);
+      if (out) row.appendChild(out);
+    }
     return row;
   }
 
@@ -968,9 +1001,9 @@
 
   // ---- header banner: next movie night (both free), a suggestion from usual days, or a nudge ----
   // "I'm free too" on a date only one of you has ticked: opens the sheet where the other name gets ticked
-  function sheetChip(cls, text, line) {
+  function sheetChip(cls, text, line, link) {
     const gridMode = !!cfg.availabilityCsvUrl;
-    const url = (gridMode ? cfg.availabilitySheetUrl : cfg.datesSheetUrl) || cfg.sheetUrl;
+    const url = link || (gridMode ? cfg.availabilitySheetUrl : cfg.datesSheetUrl) || cfg.sheetUrl;
     if (!url) return null;
     const a = document.createElement('a');
     a.className = 'chip ' + cls;
@@ -981,9 +1014,9 @@
     a.addEventListener('click', () => say(line));
     return a;
   }
-  const freeTooChip = () => sheetChip('free-too', "\u2713 I'm free too", 'Tick your name next to the date \u2705');
+  const freeTooChip = (link) => sheetChip('free-too', "\u2713 I'm free too", 'Tick your name next to the date \u2705', link);
   // plans changed: opens the sheet to untick your name (or delete the row if nobody's free any more)
-  const notFreeChip = () => sheetChip('not-free', "\u2715 Can't make it", 'Untick your name next to that date. Maybe next time \uD83D\uDC3E');
+  const notFreeChip = (link) => sheetChip('not-free', "\u2715 Can't make it", 'Untick your name next to that date. Maybe next time \uD83D\uDC3E', link);
 
   function renderNextShow(dated, today, hints, lastNight) {
     const box = document.getElementById('next-show');
@@ -1032,7 +1065,7 @@
       box.append(when(locked.date), countdown(locked.date, today), tag, showtimeActions(locked));
       const days = Math.round((locked.date - today) / 86400000);
       const what = locked.lock ? locked.lock + ' ' : 'Movie night ';
-      if (days <= 1) { spoke = true; setTimeout(() => say(what + (days === 0 ? 'is TONIGHT! \uD83C\uDF7F' : 'is tomorrow! \uD83C\uDF7F')), 1500); }
+      if (days <= 1 && firstLoad) { spoke = true; setTimeout(() => say(what + (days === 0 ? 'is TONIGHT! \uD83C\uDF7F' : 'is tomorrow! \uD83C\uDF7F')), 1500); }
     } else if (both) {
       label.textContent = 'Next movie night';
       const tag = document.createElement('span');
@@ -1040,7 +1073,7 @@
       tag.textContent = 'BOTH FREE';
       box.append(when(both.date), countdown(both.date, today), tag, showtimeActions(both));
       const days = Math.round((both.date - today) / 86400000);
-      if (days <= 1) { spoke = true; setTimeout(() => say(days === 0 ? 'Movie night is TONIGHT! \uD83C\uDF7F' : 'Movie night is tomorrow! \uD83C\uDF7F'), 1500); }
+      if (days <= 1 && firstLoad) { spoke = true; setTimeout(() => say(days === 0 ? 'Movie night is TONIGHT! \uD83C\uDF7F' : 'Movie night is tomorrow! \uD83C\uDF7F'), 1500); }
     } else if (suggestion) {
       label.textContent = 'Suggested';
       const why = document.createElement('span');
@@ -1061,7 +1094,7 @@
       gap.className = 'ns-since';
       gap.textContent = since + ' days since your last movie night';
       box.appendChild(gap);
-      if (since >= 21 && !spoke) setTimeout(() => say("It's been " + since + ' days since our last movie night! I miss it \uD83E\uDD7A'), 1800);
+      if (since >= 21 && !spoke && firstLoad) setTimeout(() => say("It's been " + since + ' days since our last movie night! I miss it \uD83E\uDD7A'), 1800);
     }
     box.hidden = false;
   }
@@ -1090,7 +1123,23 @@
     el.hidden = false;
   }
 
-  async function fillList(listId, csvUrl, emptyText, kind) {
+  // the last text of each CSV, so a refresh that fails keeps the lists, and picking your name redraws without loading
+  const csvCache = {};
+  let firstLoad = true;
+  async function getCsv(url, fresh) {
+    if (!fresh && csvCache[url] !== undefined) return { text: csvCache[url] };
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) return csvCache[url] !== undefined ? { text: csvCache[url], stale: true } : { status: res.status };
+      csvCache[url] = await res.text();
+      return { text: csvCache[url] };
+    } catch (e) {
+      if (csvCache[url] !== undefined) return { text: csvCache[url], stale: true };
+      throw e;
+    }
+  }
+
+  async function fillList(listId, csvUrl, emptyText, kind, fresh) {
     const list = document.getElementById(listId);
     const watchedList = kind === 'movies' ? document.getElementById('watched-list') : null;
     const watchedBlock = kind === 'movies' ? document.getElementById('watched-block') : null;
@@ -1098,9 +1147,9 @@
     const today = new Date(); today.setHours(0, 0, 0, 0);
     if (!csvUrl) { setMessage(list, 'Not connected yet.'); return null; }
     try {
-      const res = await fetch(csvUrl);
-      if (!res.ok) { setMessage(list, 'Could not load the list (Google answered ' + res.status + '). Is the tab published as CSV?'); return null; }
-      const text = await res.text();
+      const got = await getCsv(csvUrl, fresh);
+      if (got.status) { setMessage(list, 'Could not load the list (Google answered ' + got.status + '). Is the tab published as CSV?'); return null; }
+      const text = got.text;
       if (/^\s*</.test(text)) { setMessage(list, 'That link is a web page, not CSV. Re-publish the tab as "Comma-separated values (.csv)".'); return null; }
       const parsed = parseCsv(text);
       const header = parsed[0] || [];
@@ -1140,6 +1189,7 @@
       ];
       const skipCols = new Set([whoI, lockI, timeI, ...personCols]);
       let lastNight = null; // the most recent locked night that's already over
+      const datesBase = kind === 'dates' ? (gridMode ? cfg.availabilitySheetUrl : cfg.datesSheetUrl) || '' : '';
       if (watchedBlock) watchedBlock.hidden = wi < 0;
 
       const seen = readSeen(listId);
@@ -1153,7 +1203,7 @@
       let people = [];
       let hints = null;
       if (gridMode) {
-        const g = parseGrid(parsed, today);
+        const g = parseGrid(parsed, today, datesBase);
         dated = g.dated;
         people = g.people;
         hints = g.hints;
@@ -1172,7 +1222,7 @@
             r, key, keys: [key], title,
             date: kind === 'dates' ? parseDate(title, order) : null,
             watched: wi >= 0 && isTrue(r[wi]),
-            ratings: ratingCols.map((c) => ({ name: c.name, value: parseRating(r[c.i]) })),
+            ratings: ratingCols.map((c) => ({ name: c.name, value: parseRating(r[c.i]), i: c.i })),
             details: r.slice(2).filter((x, i) => i + 2 !== wi && !ratingIdx.has(i + 2) && !skipCols.has(i + 2)).map((x) => x.trim()).filter(Boolean).join(' · '),
             lock: lockI >= 0 ? lockedValue(r[lockI]) : null,
             slots: timeI >= 0 ? timeSlots(r[timeI]) : [],
@@ -1203,8 +1253,9 @@
             }
             const k = ymd(e.date);
             let g = groups.get(k);
-            if (!g) { g = { r: e.r, title: e.title, date: e.date, keys: [], names: [], notes: [], free: new Map(), lock: null }; groups.set(k, g); }
+            if (!g) { g = { r: e.r, rows: [], title: e.title, date: e.date, keys: [], names: [], notes: [], free: new Map(), lock: null }; groups.set(k, g); }
             g.keys.push(e.key);
+            g.rows.push(e.r);
             names.forEach((n) => {
               if (!g.names.includes(n)) g.names.push(n);
               // a row without a time means any time; times from several rows add up
@@ -1224,6 +1275,21 @@
             });
           });
           dated.sort((a, b) => ((b.lock !== null) - (a.lock !== null)) || (b.both - a.both) || (a.date - b.date));
+          // sheet links straight to the right cell: your checkbox (or the Who answer) and the Locked cell of that date
+          const myCol = personCols.find((i) => isMe(header[i]));
+          const nameCol = myCol !== undefined ? myCol : whoI >= 0 ? whoI : 1;
+          if (datesBase) {
+            dated.forEach((g) => {
+              const first = g.rows[g.rows.length - 1]; // rows are newest first: the oldest one is the original answer
+              const minePos = g.rows.find((r) => namesIn(r).some(isMe));
+              const outCol = minePos && myCol !== undefined && isTrue(minePos[myCol]) ? myCol : whoI >= 0 ? whoI : nameCol;
+              g.links = {
+                free: cellUrl(datesBase, nameCol, first.line),
+                out: cellUrl(datesBase, outCol, (minePos || first).line),
+                lock: cellUrl(datesBase, lockI >= 0 ? lockI : 1, first.line),
+              };
+            });
+          }
           entries = [...dated, ...textOnly];
         }
       }
@@ -1300,14 +1366,17 @@
           row.appendChild(c);
           const missing = (e.ratings || []).filter((x) => !x.value);
           const unrated = missing.map((x) => x.name).filter(Boolean);
-          if (e.watched && (!ratingCols.length || missing.length) && cfg.sheetUrl) {
-            // watched but someone's score is missing: open the sheet to fill it in
+          const mineR = (e.ratings || []).find((x) => isMe(x.name)); // your own rating column, once you've said who you are
+          const needed = mineR ? !mineR.value : (!ratingCols.length || missing.length > 0);
+          if (e.watched && needed && cfg.sheetUrl) {
+            // watched but a score is missing: open the sheet at that cell
+            const target = mineR || missing[0];
             const rate = document.createElement('a');
             rate.className = 'chip mini rate';
-            rate.href = cfg.sheetUrl;
+            rate.href = cellUrl(cfg.sheetUrl, target ? target.i : (wi >= 0 ? wi : 1), e.r.line);
             rate.target = '_blank';
             rate.rel = 'noopener';
-            rate.textContent = unrated.length && missing.length < ratingCols.length ? '\u2605 ' + unrated.join(' & ') + ': rate it' : '\u2605 Rate it';
+            rate.textContent = !mineR && unrated.length && missing.length < ratingCols.length ? '\u2605 ' + unrated.join(' & ') + ': rate it' : '\u2605 Rate it';
             rate.addEventListener('click', () => say('How many out of 10? Write it in your rating column \u2B50'));
             row.appendChild(rate);
           }
@@ -1327,12 +1396,14 @@
       if (kind === 'dates') {
         renderNextShow(dated, today, hints, lastNight);
         renderBoard(dated, people, today, hints);
-        return { kind, both: dated.filter((e) => e.both).length, lastNight, today };
+        return { kind, both: dated.filter((e) => e.both).length, lastNight, today, stale: !!got.stale, names: people };
       }
       movieTitles = entries.filter((e) => !e.watched).map((e) => e.title);
       renderTaste(entries);
       return {
         kind,
+        stale: !!got.stale,
+        names: ratingCols.map((c) => c.name).filter(Boolean),
         watchedCol: wi >= 0,
         watched: entries.filter((e) => e.watched).length,
         waiting: movieTitles.length,
@@ -1383,10 +1454,97 @@
     });
   }
 
-  Promise.all([
-    fillList('movie-list', cfg.moviesCsvUrl, 'No movies yet. Add the first one!', 'movies'),
-    fillList('date-list', cfg.availabilityCsvUrl || cfg.datesCsvUrl, 'No dates yet. Add one!', 'dates'),
-  ]).then(renderStats);
+  // ---- status bar under the stats: "Who's this?" and "Updated 2 min ago · Refresh" ----
+  const bar = document.getElementById('status-bar');
+  let lastLoad = 0, loading = false, stale = false, names = [];
+  const ago = () => {
+    const min = Math.floor((Date.now() - lastLoad) / 60000);
+    return stale ? "couldn't refresh" : min < 1 ? 'updated just now' : 'updated ' + min + ' min ago';
+  };
+  function renderBar() {
+    if (!bar) return;
+    bar.innerHTML = '';
+    const who = document.createElement('span');
+    who.className = 'me';
+    if (names.length >= 2 && !names.some(isMe)) {
+      who.appendChild(document.createTextNode("Who's this?"));
+      names.slice(0, 4).forEach((n) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'chip mini';
+        b.textContent = n;
+        b.addEventListener('click', () => setMe(n));
+        who.appendChild(b);
+      });
+    } else if (me && names.some(isMe)) {
+      who.appendChild(document.createTextNode('Hi, ' + names.find(isMe) + ' '));
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.className = 'link-btn';
+      sw.textContent = 'not you?';
+      sw.addEventListener('click', () => setMe(''));
+      who.appendChild(sw);
+    }
+    const fresh = document.createElement('span');
+    fresh.className = 'fresh';
+    fresh.textContent = loading ? 'refreshing\u2026' : lastLoad ? ago() : '';
+    const again = document.createElement('button');
+    again.type = 'button';
+    again.className = 'link-btn';
+    again.textContent = '\u21BB Refresh';
+    again.disabled = loading;
+    again.addEventListener('click', () => loadAll(true));
+    if (lastLoad) fresh.append(' \u00B7 ', again);
+    bar.append(who, fresh);
+    bar.hidden = false;
+  }
+  function setMe(name) {
+    me = name;
+    try { if (name) localStorage.setItem(ME_KEY, name); else localStorage.removeItem(ME_KEY); } catch (e) { /* not remembered */ }
+    if (name) say('Hi ' + name + '! \uD83D\uDC3E I\'ll only show the buttons that are for you');
+    loadAll(false); // redraw from the data already loaded
+  }
+
+  function loadAll(fresh) {
+    if (loading) return Promise.resolve();
+    loading = true;
+    renderBar();
+    return Promise.all([
+      fillList('movie-list', cfg.moviesCsvUrl, 'No movies yet. Add the first one!', 'movies', fresh),
+      fillList('date-list', cfg.availabilityCsvUrl || cfg.datesCsvUrl, 'No dates yet. Add one!', 'dates', fresh),
+    ]).then((results) => {
+      renderStats(results);
+      names = [];
+      results.forEach((r) => (r && r.names || []).forEach((n) => { if (n && !names.some((x) => sameName(x, n))) names.push(n); }));
+      stale = results.some((r) => r && r.stale);
+      if (fresh || !lastLoad) lastLoad = Date.now();
+      loading = false;
+      if (firstLoad) {
+        firstLoad = false;
+        let greeted = false;
+        try { greeted = sessionStorage.getItem('planner-greeted') === '1'; sessionStorage.setItem('planner-greeted', '1'); } catch (e) { /* ignore */ }
+        if (!greeted && names.length >= 2) setTimeout(() => say(names.some(isMe) ? 'Hi ' + names.find(isMe) + '! \uD83D\uDC3E' : "Who's this? Tap your name up top \uD83D\uDC3E"), 700);
+      }
+      renderBar();
+    });
+  }
+  loadAll(true);
+  setInterval(() => { if (lastLoad && !loading) renderBar(); }, 30000); // keep "updated N min ago" current
+
+  // Back from the sheet (or the tab was in the background): load again, so ticks made there show up here.
+  // Google needs a few minutes to publish sheet changes, and Tara says so.
+  let toSheet = false;
+  document.addEventListener('click', (ev) => {
+    const a = ev.target.closest && ev.target.closest('a[href*="docs.google.com/spreadsheets"]');
+    if (a) toSheet = true;
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !lastLoad) return;
+    if (!toSheet && Date.now() - lastLoad < 60000) return;
+    const back = toSheet;
+    toSheet = false;
+    loadAll(true).then(() => { if (back) say('Refreshed! New ticks can take Google a few minutes to show up here \u23F3'); });
+  });
 })();
 
 // Pixel Tara: a tiny pixel-art dachshund who trots along the bottom of the screen now and then.
