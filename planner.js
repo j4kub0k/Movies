@@ -886,6 +886,8 @@
     btn.addEventListener('click', () => lock(true));
     plain.addEventListener('click', () => lock(false));
     wrap.append(btn, plain, result);
+    const out = notFreeChip(); // in the same row as the lock buttons
+    if (out) wrap.appendChild(out);
     return wrap;
   }
 
@@ -1033,8 +1035,6 @@
       tag.className = 'both-tag';
       tag.textContent = 'BOTH FREE';
       box.append(when(both.date), countdown(both.date, today), tag, lockInButton(both.date, both.details));
-      const out = notFreeChip();
-      if (out) box.appendChild(out);
       const days = Math.round((both.date - today) / 86400000);
       if (days <= 1) { spoke = true; setTimeout(() => say(days === 0 ? 'Movie night is TONIGHT! \uD83C\uDF7F' : 'Movie night is tomorrow! \uD83C\uDF7F'), 1500); }
     } else if (suggestion) {
@@ -1287,8 +1287,6 @@
             li.appendChild(lockedView(e));
           } else if (e.both) {
             li.appendChild(lockInButton(e.date, e.details));
-            const out = notFreeChip();
-            if (out) li.appendChild(out);
           } else {
             const cal = calendarButtons(e.date, e.details);
             const free = freeTooChip();
