@@ -158,7 +158,7 @@
     const ids = shuffle(available.slice());
     // with an odd number of photos one is centred in a middle row, so nothing looks missing
     const odd = COUNT % 2 === 1;
-    const soloRow = odd ? Math.min(ROWS - 2, 1 + Math.floor(Math.random() * Math.max(1, ROWS - 2))) : -1;
+    const soloRow = !odd ? -1 : ROWS === 1 ? 0 : Math.min(ROWS - 2, 1 + Math.floor(Math.random() * Math.max(1, ROWS - 2)));
     const slots = [];
     for (let row = 0; row < ROWS; row++) {
       if (row === soloRow) slots.push({ row, x: (100 - WIDTH) / 2 });
@@ -449,19 +449,33 @@
   const pad2 = (n) => String(n).padStart(2, '0');
   const ymd = (d) => d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate());
   const icsEscape = (s) => String(s).replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
-  // calendar files must wrap long lines (continuation lines start with a space); never split an emoji in half
+  // calendar files must wrap lines longer than 75 bytes (continuation lines start with a space). Bytes, not
+  // characters: Czech letters take 2 and emoji 4. Whole characters only, so a letter or emoji is never split.
+  const utf8 = new TextEncoder();
   function foldLine(line) {
     const out = [];
-    let rest = line;
-    while (rest.length > 60) {
-      let cut = 60;
-      const code = rest.charCodeAt(cut - 1);
-      if (code >= 0xD800 && code <= 0xDBFF) cut--; // do not cut between the two halves of an emoji
-      out.push(rest.slice(0, cut));
-      rest = ' ' + rest.slice(cut);
+    let cur = '', bytes = 0;
+    for (const ch of line) {
+      const n = utf8.encode(ch).length;
+      if (bytes + n > 75) { out.push(cur); cur = ' '; bytes = 1; }
+      cur += ch;
+      bytes += n;
     }
-    out.push(rest);
+    out.push(cur);
     return out.join('\r\n');
+  }
+  const utcStamp = (d) => d.getUTCFullYear() + pad2(d.getUTCMonth() + 1) + pad2(d.getUTCDate()) + 'T' +
+    pad2(d.getUTCHours()) + pad2(d.getUTCMinutes()) + pad2(d.getUTCSeconds()) + 'Z';
+  // hand a calendar file to the browser as a download
+  function downloadIcs(name, text) {
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/calendar;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
   function eventInfo(date, note, customTitle) {
     const title = customTitle || cfg.eventTitle || 'Movie night \uD83C\uDFAC';
@@ -473,15 +487,12 @@
   }
   function buildIcs(date, info) {
     const next = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
-    const now = new Date();
-    const stamp = now.getUTCFullYear() + pad2(now.getUTCMonth() + 1) + pad2(now.getUTCDate()) + 'T' +
-      pad2(now.getUTCHours()) + pad2(now.getUTCMinutes()) + pad2(now.getUTCSeconds()) + 'Z';
     const alarm = (trigger, text) => ['BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + icsEscape(text), 'TRIGGER:' + trigger, 'END:VALARM'];
     return [
       'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Movie Night Planner//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
       'BEGIN:VEVENT',
       'UID:movie-night-' + ymd(date) + '@birthday-surprise',
-      'DTSTAMP:' + stamp,
+      'DTSTAMP:' + utcStamp(new Date()),
       'DTSTART;VALUE=DATE:' + ymd(date),
       'DTEND;VALUE=DATE:' + ymd(next),
       'SUMMARY:' + icsEscape(info.title),
@@ -502,15 +513,7 @@
     ics.textContent = 'Add to calendar';
     ics.addEventListener('click', () => {
       say("Saved! I'll wag my tail on the day \uD83D\uDC3E");
-      const blob = new Blob([buildIcs(date, info)], { type: 'text/calendar;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'movie-night-' + ymd(date) + '.ics';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      downloadIcs('movie-night-' + ymd(date) + '.ics', buildIcs(date, info));
     });
     const next = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
     const g = document.createElement('a');
@@ -550,14 +553,11 @@
   }
   function buildReminderIcs(start, info) {
     const end = new Date(start.getTime() + 15 * 60 * 1000);
-    const now = new Date();
-    const stamp = now.getUTCFullYear() + pad2(now.getUTCMonth() + 1) + pad2(now.getUTCDate()) + 'T' +
-      pad2(now.getUTCHours()) + pad2(now.getUTCMinutes()) + pad2(now.getUTCSeconds()) + 'Z';
     return [
       'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Movie Night Planner//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
       'BEGIN:VEVENT',
       'UID:monthly-movie-night-reminder@birthday-surprise',
-      'DTSTAMP:' + stamp,
+      'DTSTAMP:' + utcStamp(new Date()),
       'DTSTART:' + floatingStamp(start),
       'DTEND:' + floatingStamp(end),
       'RRULE:FREQ=MONTHLY;BYDAY=1SA',
@@ -577,15 +577,7 @@
     const info = reminderInfo();
     icsBtn.addEventListener('click', () => {
       say("I'll remind you once a month. Woof! \uD83D\uDC3E");
-      const blob = new Blob([buildReminderIcs(start, info)], { type: 'text/calendar;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'movie-night-monthly-reminder.ics';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      downloadIcs('movie-night-monthly-reminder.ics', buildReminderIcs(start, info));
     });
     gLink.href = 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
       '&text=' + encodeURIComponent(info.title) +
@@ -815,8 +807,6 @@
       line.appendChild(b);
     }
     wrap.append(line, calendarButtons(e.date, e.details, lockTitle(e.lock)));
-    const out = notFreeChip();
-    if (out) wrap.appendChild(out);
     return wrap;
   }
   // the site can't write to the sheet: this opens it, with the movie copied, so the lock can be typed in for both
@@ -886,9 +876,23 @@
     btn.addEventListener('click', () => lock(true));
     plain.addEventListener('click', () => lock(false));
     wrap.append(btn, plain, result);
-    const out = notFreeChip(); // in the same row as the lock buttons
-    if (out) wrap.appendChild(out);
     return wrap;
+  }
+
+  // the buttons under a date: the locked night, the lock buttons (both free), or calendar + "I'm free too".
+  // "Can't make it" always goes at the end of that same row.
+  function showtimeActions(e) {
+    let row;
+    if (e.lock != null) row = lockedView(e);
+    else if (e.both) row = lockInButton(e.date, e.details);
+    else {
+      row = calendarButtons(e.date, e.details);
+      const free = freeTooChip();
+      if (free) row.appendChild(free);
+    }
+    const out = notFreeChip();
+    if (out) row.appendChild(out);
+    return row;
   }
 
   // ---- "Who's free" board: the next five weeks, a dot per person, lime when you're both free ----
@@ -1025,7 +1029,7 @@
       const tag = document.createElement('span');
       tag.className = 'both-tag locked-tag';
       tag.textContent = '\uD83D\uDD12 LOCKED';
-      box.append(when(locked.date), countdown(locked.date, today), tag, lockedView(locked));
+      box.append(when(locked.date), countdown(locked.date, today), tag, showtimeActions(locked));
       const days = Math.round((locked.date - today) / 86400000);
       const what = locked.lock ? locked.lock + ' ' : 'Movie night ';
       if (days <= 1) { spoke = true; setTimeout(() => say(what + (days === 0 ? 'is TONIGHT! \uD83C\uDF7F' : 'is tomorrow! \uD83C\uDF7F')), 1500); }
@@ -1034,7 +1038,7 @@
       const tag = document.createElement('span');
       tag.className = 'both-tag';
       tag.textContent = 'BOTH FREE';
-      box.append(when(both.date), countdown(both.date, today), tag, lockInButton(both.date, both.details));
+      box.append(when(both.date), countdown(both.date, today), tag, showtimeActions(both));
       const days = Math.round((both.date - today) / 86400000);
       if (days <= 1) { spoke = true; setTimeout(() => say(days === 0 ? 'Movie night is TONIGHT! \uD83C\uDF7F' : 'Movie night is tomorrow! \uD83C\uDF7F'), 1500); }
     } else if (suggestion) {
@@ -1075,7 +1079,7 @@
     if (dates) parts.push(dates.both + ' both-free date' + (dates.both === 1 ? '' : 's'));
     if (dates && dates.lastNight) {
       const ago = Math.round((dates.today - dates.lastNight) / 86400000);
-      parts.push('last movie night ' + (ago === 0 ? 'today' : ago === 1 ? 'yesterday' : ago + ' days ago'));
+      parts.push('last movie night ' + (ago === 1 ? 'yesterday' : ago + ' days ago'));
     }
     if (movies && movies.ratings.length) {
       const avg = movies.ratings.reduce((a, b) => a + b, 0) / movies.ratings.length;
@@ -1109,7 +1113,6 @@
           .map((c) => ({ i: c.i, name: c.h.replace(/\s*(['\u2019`\u00B4]s)?\s*(rating|hodnocen|stars|hv[eě]zd)\w*.*$/i, '').trim() }))
         : [];
       const ratingIdx = new Set(ratingCols.map((c) => c.i));
-      // dates from the form: a "Who" column says who is free, so dates you both picked can be matched
       // dates from the form: who is free comes from a "Who" question (a Checkboxes question gives "Jakub, Adela")
       // and/or from checkbox columns named after each person (TRUE/FALSE), which can also be ticked later in the sheet
       const formDates = kind === 'dates' && !gridMode;
@@ -1282,19 +1285,8 @@
         }
         if (e.date) {
           li.classList.add('has-cal');
-          if (e.lock !== null && e.lock !== undefined) {
-            li.classList.add('both', 'is-locked');
-            li.appendChild(lockedView(e));
-          } else if (e.both) {
-            li.appendChild(lockInButton(e.date, e.details));
-          } else {
-            const cal = calendarButtons(e.date, e.details);
-            const free = freeTooChip();
-            if (free) cal.appendChild(free);
-            const out = notFreeChip();
-            if (out) cal.appendChild(out);
-            li.appendChild(cal);
-          }
+          if (e.lock != null) li.classList.add('both', 'is-locked');
+          li.appendChild(showtimeActions(e));
         }
         if (kind === 'movies') {
           const row = document.createElement('span');
@@ -1515,22 +1507,32 @@
   };
   avatar.addEventListener('click', () => window.taraSay('Woof! \uD83D\uDC3E'));
 
-  // A link that opens a new tab right after Tara spoke waits a moment, so the message can be read first
-  let saidAt = 0, opening = false;
+  // A link that opens a new tab right after Tara spoke waits a moment, so the message can be read first.
+  // Not in the home-screen app (links leave it anyway). This page is never replaced: if the browser blocks the
+  // late tab, Tara asks for another tap, and that tap opens the link straight away.
+  let saidAt = 0, pending = null, retry = null;
   const sayRaw = window.taraSay;
   window.taraSay = (text) => { saidAt = Date.now(); sayRaw(text); };
+  const asApp = () => (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
   document.addEventListener('click', (ev) => {
     const a = ev.target.closest && ev.target.closest('a[target="_blank"]');
     if (!a || ev.defaultPrevented || ev.button || ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey) return;
-    if (!/^https?:/.test(a.href) || Date.now() - saidAt > 150) return; // only links that just made Tara talk
+    if (a === retry) { retry = null; return; } // the tap after a blocked tab: let the browser open it now
+    if (!/^https?:/.test(a.href) || Date.now() - saidAt > 150 || asApp()) return; // only links that just made Tara talk
     ev.preventDefault();
-    if (opening) return;
-    opening = true;
-    setTimeout(() => {
-      opening = false;
-      const w = window.open(a.href, '_blank');
-      if (w) w.opener = null; else window.location.href = a.href; // popup blocked: open it right here
-    }, 1000);
+    if (pending) {
+      if (pending.a === a) return; // a double tap opens one tab
+      clearTimeout(pending.timer);  // a different link: that one wins
+    }
+    pending = {
+      a,
+      timer: setTimeout(() => {
+        pending = null;
+        const w = window.open(a.href, '_blank');
+        if (w) w.opener = null;
+        else { retry = a; sayRaw('Tap it once more to open it \uD83D\uDC3E'); }
+      }, 1000),
+    };
   });
 
   const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
