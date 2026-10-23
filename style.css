@@ -915,3 +915,25 @@ body::after {
 .link-btn { background: none; border: 0; padding: 4px 2px; min-height: 30px; color: var(--lime); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .link-btn:disabled { opacity: 0.5; cursor: wait; }
 .link-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* banner on phones: "Just the date", "Can't make it" etc. wait behind "more" */
+.next-show { position: relative; }
+.ns-more { display: none; }
+@media (max-width: 560px) {
+  .ns-more { display: inline-block; position: absolute; top: 6px; right: 8px; font: 700 0.62rem/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; }
+  .next-show:not(.more-open) .secondary { display: none !important; }
+}
+
+/* Tara's bubble: tap to close; moves to the top when you tapped something at the bottom */
+.tara-msg { cursor: pointer; }
+.tara-pop.top { bottom: auto; top: 16px; transform-origin: top right; }
+.tara-pop.top:not(.show) { transform: translateY(-24px) scale(0.92); }
+.tara-pop.top .tara-face::after { bottom: auto; top: -16px; }
+
+/* loading: ticket-shaped placeholders instead of "Loading..." */
+.planner-list li.skeleton { height: 58px; padding: 0; border-style: solid; border-color: var(--line); background: linear-gradient(100deg, #111 30%, #1c1c1c 50%, #111 70%) 0 0 / 300% 100%; animation: skeleton 1.4s linear infinite; }
+.showtimes li.skeleton { height: 84px; }
+@keyframes skeleton { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .planner-list li.skeleton { animation: none; } }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.chip.retry { margin-left: 10px; font-style: normal; }
